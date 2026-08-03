@@ -1,4 +1,4 @@
-﻿<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="zh-CN">
 <head>
 <meta charset="UTF-8">
@@ -200,6 +200,9 @@
       <div class="nav-item" data-page="data" onclick="switchPage('data')">
         <span class="icon">📊</span><span class="nav-text">数据管理</span>
       </div>
+      <div class="nav-item" data-page="email" onclick="switchPage('email')">
+        <span class="icon">📧</span><span class="nav-text">邮箱列表</span>
+      </div>
       <div class="nav-item" data-page="monitor" onclick="switchPage('monitor')">
         <span class="icon">🔔</span><span class="nav-text">监控配置</span>
       </div>
@@ -279,12 +282,32 @@
       </div>
     </div>
 
+    <!-- ===== 邮箱列表页 ===== -->
+    <div class="page" id="page-email">
+      <div class="header-row">
+        <h1>邮箱列表</h1>
+        <div class="actions">
+          <button class="btn ghost sm" onclick="document.getElementById('emailImportFile').click()">⬆ 导入邮箱</button>
+          <input type="file" id="emailImportFile" accept=".txt,.csv,.json" style="display:none;" onchange="importEmails(event)">
+          <button class="btn success sm" onclick="openAddEmail()">+ 新增邮箱</button>
+          <button class="btn ghost sm" onclick="exportEmails()">导出</button>
+        </div>
+      </div>
+      <div class="help-tip">
+        💡 邮箱状态根据小程序列表自动匹配：邮箱被某小程序使用则显示对应小程序名+已使用；未被使用显示"未使用"。
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead><tr>
+            <th>邮箱</th><th>小程序名字</th><th>状态</th><th>操作</th>
+          </tr></thead>
+          <tbody id="emailBody"></tbody>
+        </table>
+      </div>
+    </div>
+
     <!-- ===== 监控配置页 ===== -->
     <div class="page" id="page-monitor">
-      <div class="header-row">
-        <h1>监控配置</h1>
-        <div class="actions">
-          <button class="btn ghost sm" onclick="loadDefaultConfig()">恢复默认</button>
           <button class="btn sm" onclick="saveMonitorConfig()">保存配置</button>
           <button class="btn success sm" onclick="exportMonitorConfig()">导出 config.json</button>
         </div>
@@ -366,6 +389,17 @@
   </div>
 </div>
 
+<div class="modal-mask" id="emailModal">
+  <div class="modal" style="width:450px;">
+    <div class="modal-head"><h3 id="emailModalTitle">新增邮箱</h3><span class="close" onclick="closeEmailModal()">&times;</span></div>
+    <div class="modal-body">
+      <div class="form-item full" style="gap:6px;"><label>邮箱地址</label><input type="text" id="emailInput" placeholder="请输入邮箱地址" onkeydown="if(event.key==='Enter')saveEmail()"></div>
+    </div>
+    <div class="modal-foot"><button class="btn ghost sm" onclick="closeEmailModal()">取消</button><button class="btn sm" onclick="saveEmail()">保存</button></div>
+  </div>
+</div>
+
+<datalist id="unusedEmailList"></datalist>
 <div class="toast" id="toast"></div>
 
 <script src="data.js"></script>
@@ -373,6 +407,7 @@
 const ACCESS_PASSWORD = 'wudi2026';
 const STORAGE_KEY = 'laingzizhiwang_local_records';
 const MONITOR_CONFIG_KEY = 'laingzizhiwang_monitor_config';
+const EMAIL_STORAGE_KEY = 'laingzizhiwang_email_list';
 const SESSION_KEY = 'laingzizhiwang_authed';
 
 const DEFAULT_MONITOR_CONFIG = {
@@ -397,7 +432,7 @@ const COLS = [
   { key: 'status', label: '状态', type: 'status', sortable: true, form: { type: 'select', options: ['', '待审核', '审核中', '审核通过', '待注册', '已验收'] } },
   { key: 'email', label: '邮箱', type: 'mono', form: { type: 'text' } },
   { key: 'miniProgramPassword', label: '小程序密码', type: 'copy', form: { type: 'text' } },
-  { key: 'submitDate', label: '提交时间', type: 'date', sortable: true, form: { type: 'date' } }
+  { key: 'submitDate', label: '提交时间', type: 'date', sortable: true, form: { type: 'date' }, formShow: false }
 ];
 const STATUS_LIST = ['待审核','审核中','审核通过','待注册','已验收'];
 const OP_COL = { key: '_op', label: '操作', type: 'op' };
@@ -421,6 +456,7 @@ function switchPage(name){
   document.getElementById('page-' + name).classList.add('active');
   document.querySelector('.nav-item[data-page="' + name + '"]').classList.add('active');
   if (name === 'monitor') { loadMonitorConfigToForm(); updateMonitorStats(); }
+  if (name === 'email') renderEmailList();
   if (name === 'dashboard') renderDashboard();
 }
 
@@ -598,17 +634,18 @@ function openAdd(){
   editingId = null;
   document.getElementById('modalTitle').textContent = '新增记录';
   const grid = document.getElementById('formGrid');
-  grid.innerHTML = COLS.map(c => {
+  grid.innerHTML = COLS.filter(c => c.formShow !== false).map(c => {
     const f = c.form;
     const fullWidth = (f.type === 'textarea') ? ' full' : '';
     let input;
-    const today = new Date().toISOString().slice(0,10);
     if (f.type === 'select') input = `<select id="f_${c.key}">${f.options.map(o => `<option value="${esc(o)}">${esc(o)||'(空)'}</option>`).join('')}</select>`;
-    else if (f.type === 'date') input = `<input type="date" id="f_${c.key}" value="${today}">`;
+    else if (f.type === 'date') input = `<input type="date" id="f_${c.key}">`;
     else if (f.type === 'textarea') input = `<textarea id="f_${c.key}"></textarea>`;
+    else if (c.key === 'email') input = `<input type="text" id="f_${c.key}" list="unusedEmailList" placeholder="输入或选择未使用邮箱">`;
     else input = `<input type="text" id="f_${c.key}">`;
     return `<div class="form-item${fullWidth}"><label>${c.label}</label>${input}</div>`;
   }).join('');
+  refreshUnusedEmailDatalist();
   document.getElementById('editModal').classList.add('show');
 }
 
@@ -619,7 +656,7 @@ function openEdit(id){
   editingId = id;
   document.getElementById('modalTitle').textContent = '编辑记录';
   const grid = document.getElementById('formGrid');
-  grid.innerHTML = COLS.map(c => {
+  grid.innerHTML = COLS.filter(c => c.formShow !== false).map(c => {
     const f = c.form;
     const val = r[c.key] || '';
     const fullWidth = (f.type === 'textarea') ? ' full' : '';
@@ -627,9 +664,11 @@ function openEdit(id){
     if (f.type === 'select') input = `<select id="f_${c.key}">${f.options.map(o => `<option value="${esc(o)}" ${o===val?'selected':''}>${esc(o)||'(空)'}</option>`).join('')}</select>`;
     else if (f.type === 'date') { const dv = val ? val.split(' ')[0] : ''; input = `<input type="date" id="f_${c.key}" value="${esc(dv)}">`; }
     else if (f.type === 'textarea') input = `<textarea id="f_${c.key}">${esc(val)}</textarea>`;
+    else if (c.key === 'email') input = `<input type="text" id="f_${c.key}" list="unusedEmailList" value="${esc(val)}" placeholder="输入或选择未使用邮箱">`;
     else input = `<input type="text" id="f_${c.key}" value="${esc(val)}">`;
     return `<div class="form-item${fullWidth}"><label>${c.label}</label>${input}</div>`;
   }).join('');
+  refreshUnusedEmailDatalist();
   document.getElementById('editModal').classList.add('show');
 }
 
@@ -638,9 +677,22 @@ function closeModal(){ document.getElementById('editModal').classList.remove('sh
 function saveRecord(){
   const data = { _localId: editingId || ('local_' + Date.now() + '_' + Math.random().toString(36).slice(2,8)) };
   COLS.forEach(c => { const el = document.getElementById('f_' + c.key); if (el) data[c.key] = el.value.trim() || null; });
-  // 状态改为审核通过/已验收时，清空提交时间
+  // 提交时间根据状态自动管理（表单中已隐藏）
+  const today = new Date().toISOString().slice(0, 10);
   if (data.status === '审核通过' || data.status === '已验收') {
-    data.submitDate = null;
+    data.submitDate = null;  // 审核通过/已验收清空提交时间
+  } else if (data.status === '审核中') {
+    // 审核中：如果没有提交时间则填今天，已有则保留
+    const existing = editingId ? (getAllRecords().find(r => r.id === editingId) || {}).submitDate : null;
+    data.submitDate = existing || today;
+  } else {
+    // 其他状态：保留原值（编辑时）
+    if (editingId) {
+      const orig = getAllRecords().find(r => r.id === editingId);
+      data.submitDate = orig ? orig.submitDate : null;
+    } else {
+      data.submitDate = null;
+    }
   }
   const local = getLocalRecords();
   if (editingId) {
@@ -653,6 +705,14 @@ function saveRecord(){
     showToast('已新增记录', 'success');
   }
   setLocalRecords(local); closeModal(); render();
+  // 新邮箱自动同步到邮箱列表
+  if (data.email) {
+    const emailList = getEmails();
+    if (!emailList.some(e => e.email === data.email)) {
+      emailList.push({ email: data.email, _id: 'em_' + Date.now() + '_' + Math.random().toString(36).slice(2,8) });
+      setEmails(emailList);
+    }
+  }
 }
 
 function deleteRecord(id){
@@ -670,6 +730,120 @@ function exportJSON(){
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url; a.download = 'records-' + new Date().toISOString().slice(0,10) + '.json'; a.click();
+  URL.revokeObjectURL(url); showToast('已导出', 'success');
+}
+
+// ============ 邮箱列表 ============
+function getEmails(){ try { return JSON.parse(localStorage.getItem(EMAIL_STORAGE_KEY) || '[]'); } catch(e) { return []; } }
+function setEmails(arr){ localStorage.setItem(EMAIL_STORAGE_KEY, JSON.stringify(arr)); }
+
+// 未被小程序使用的邮箱（用于新增小程序时搜索选择）
+function getUnusedEmails(){
+  const usedEmails = new Set(getAllRecords().map(r => r.email).filter(Boolean));
+  return getEmails().filter(e => !usedEmails.has(e.email));
+}
+
+// 刷新新增/编辑小程序表单中邮箱字段的候选未使用邮箱
+function refreshUnusedEmailDatalist(){
+  const dl = document.getElementById('unusedEmailList'); if (!dl) return;
+  dl.innerHTML = getUnusedEmails().map(e => `<option value="${esc(e.email)}">`).join('');
+}
+
+// 渲染邮箱列表（状态根据小程序列表动态匹配）
+function renderEmailList(){
+  const emails = getEmails();
+  const all = getAllRecords();
+  const emailMap = {};
+  all.forEach(r => { if (r.email) { (emailMap[r.email] = emailMap[r.email] || []).push(r.miniProgramName); } });
+  const body = document.getElementById('emailBody');
+  if (emails.length === 0) { body.innerHTML = '<tr class="empty"><td colspan="4">暂无邮箱，请导入或新增</td></tr>'; return; }
+  // 排序：未使用在前，已使用在后
+  emails.sort((a, b) => {
+    const au = emailMap[a.email] ? 1 : 0, bu = emailMap[b.email] ? 1 : 0;
+    if (au !== bu) return au - bu;
+    return a.email.localeCompare(b.email);
+  });
+  body.innerHTML = emails.map((e, i) => {
+    const names = emailMap[e.email] ? emailMap[e.email].filter(Boolean) : [];
+    const used = names.length > 0;
+    return `<tr>
+      <td class="mono">${esc(e.email)}</td>
+      <td>${used ? esc(names.join('、')) : '<span class="muted">—</span>'}</td>
+      <td>${used ? '<span class="tag tag-status-审核通过">已使用</span>' : '<span class="tag tag-status-待注册">未使用</span>'}</td>
+      <td><div class="row-ops">
+        <button class="icon-btn-sm del" onclick="deleteEmail(${i})">删除</button>
+      </div></td>
+    </tr>`;
+  }).join('');
+}
+
+// 导入邮箱（支持 txt/csv/json）
+function importEmails(event){
+  const file = event.target.files[0]; if (!file) return;
+  const reader = new FileReader();
+  reader.onload = e => {
+    const text = e.target.result;
+    let parsed = [];
+    const ext = file.name.split('.').pop().toLowerCase();
+    try {
+      if (ext === 'json') {
+        const data = JSON.parse(text);
+        if (Array.isArray(data)) data.forEach(it => { if (typeof it === 'string') parsed.push(it); else if (it && it.email) parsed.push(it.email); });
+      } else if (ext === 'csv') {
+        text.split(/\r?\n/).forEach((line, idx) => {
+          const cols = line.split(',').map(s => s.trim().replace(/^"|"$/g, ''));
+          if (idx === 0 && /email|邮箱/i.test(cols[0])) return;  // 跳过表头
+          if (cols[0]) parsed.push(cols[0]);
+        });
+      } else {
+        // txt：每行一个邮箱
+        text.split(/\r?\n/).forEach(line => { const s = line.trim(); if (s) parsed.push(s); });
+      }
+    } catch(err) { showToast('文件解析失败', 'error'); return; }
+    // 去重 + 邮箱格式校验
+    parsed = [...new Set(parsed.filter(e => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e)))];
+    if (parsed.length === 0) { showToast('未找到有效邮箱', 'error'); return; }
+    const list = getEmails();
+    const exist = new Set(list.map(e => e.email));
+    let added = 0;
+    parsed.forEach(em => { if (!exist.has(em)) { list.push({ email: em, _id: 'em_' + Date.now() + '_' + Math.random().toString(36).slice(2,8) }); exist.add(em); added++; } });
+    setEmails(list); renderEmailList();
+    showToast(`导入 ${added} 个邮箱` + (parsed.length - added > 0 ? `，跳过 ${parsed.length - added} 个重复` : ''), 'success');
+  };
+  reader.readAsText(file); event.target.value = '';
+}
+
+function openAddEmail(){
+  document.getElementById('emailModalTitle').textContent = '新增邮箱';
+  document.getElementById('emailInput').value = '';
+  document.getElementById('emailModal').classList.add('show');
+  setTimeout(() => document.getElementById('emailInput').focus(), 100);
+}
+function closeEmailModal(){ document.getElementById('emailModal').classList.remove('show'); }
+
+function saveEmail(){
+  const em = document.getElementById('emailInput').value.trim();
+  if (!em) { showToast('请输入邮箱地址', 'error'); return; }
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(em)) { showToast('邮箱格式不正确', 'error'); return; }
+  const list = getEmails();
+  if (list.some(e => e.email === em)) { showToast('该邮箱已存在', 'error'); return; }
+  list.push({ email: em, _id: 'em_' + Date.now() + '_' + Math.random().toString(36).slice(2,8) });
+  setEmails(list); renderEmailList(); closeEmailModal();
+  showToast('已新增邮箱', 'success');
+}
+
+function deleteEmail(idx){
+  if (!confirm('确认删除该邮箱？')) return;
+  const list = getEmails(); list.splice(idx, 1); setEmails(list); renderEmailList();
+  showToast('已删除', 'success');
+}
+
+function exportEmails(){
+  const list = getEmails();
+  if (list.length === 0) { showToast('暂无邮箱可导出', 'error'); return; }
+  const blob = new Blob([JSON.stringify(list.map(e => e.email), null, 2)], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a'); a.href = url; a.download = 'emails-' + new Date().toISOString().slice(0,10) + '.json'; a.click();
   URL.revokeObjectURL(url); showToast('已导出', 'success');
 }
 
@@ -875,18 +1049,11 @@ print('邮件已发送')
 
 function showToast(msg, type){ const t = document.getElementById('toast'); t.textContent = msg; t.className = 'toast show ' + (type || ''); setTimeout(() => t.className = 'toast', 2000); }
 
-function init(){ renderStats(); renderFilters(); renderHead(); renderBody(); loadMonitorConfigToForm(); renderDashboard(); }
+function init(){ renderStats(); renderFilters(); renderHead(); renderBody(); loadMonitorConfigToForm(); renderDashboard(); renderEmailList(); }
 
 document.getElementById('search').addEventListener('input', () => { page = 1; renderBody(); });
 document.getElementById('filterCompany').addEventListener('change', () => { page = 1; renderBody(); });
 document.getElementById('filterStatus').addEventListener('change', () => { page = 1; renderBody(); });
-document.getElementById('editModal').addEventListener('change', function(e) {
-  if (e.target.id === 'f_status' && e.target.value === '审核中') {
-    const today = new Date().toISOString().slice(0, 10);
-    const dateInput = document.getElementById('f_submitDate');
-    if (dateInput) dateInput.value = today;
-  }
-});
 
 checkAuth();
 </script>
