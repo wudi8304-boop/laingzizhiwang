@@ -1,0 +1,243 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>小程序备案管理系统</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  :root {
+    --bg: #f5f7fa; --card: #fff; --border: #e4e7ed; --text: #303133;
+    --text-2: #606266; --text-3: #909399; --primary: #409eff;
+    --shadow: 0 2px 12px rgba(0,0,0,.08);
+  }
+  body { font-family: -apple-system, "Segoe UI", "Microsoft YaHei", sans-serif; background: var(--bg); color: var(--text); padding: 20px; }
+  .header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 20px; flex-wrap: wrap; gap: 12px; }
+  .header h1 { font-size: 22px; font-weight: 600; }
+  .header .meta { color: var(--text-3); font-size: 13px; }
+
+  .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 12px; margin-bottom: 20px; }
+  .stat-card { background: var(--card); border-radius: 8px; padding: 16px; box-shadow: var(--shadow); }
+  .stat-card .num { font-size: 28px; font-weight: 700; color: var(--primary); }
+  .stat-card .label { font-size: 13px; color: var(--text-3); margin-top: 4px; }
+  .stat-card.status-card .num { font-size: 22px; }
+
+  .toolbar { background: var(--card); border-radius: 8px; padding: 14px; box-shadow: var(--shadow); margin-bottom: 16px; display: flex; gap: 12px; flex-wrap: wrap; align-items: center; }
+  .toolbar input, .toolbar select { height: 36px; border: 1px solid var(--border); border-radius: 6px; padding: 0 12px; font-size: 14px; outline: none; background: #fff; }
+  .toolbar input { flex: 1; min-width: 200px; }
+  .toolbar input:focus, .toolbar select:focus { border-color: var(--primary); }
+  .toolbar .btn { height: 36px; padding: 0 16px; border: none; border-radius: 6px; background: var(--primary); color: #fff; cursor: pointer; font-size: 14px; }
+  .toolbar .btn:hover { opacity: .9; }
+  .toolbar .btn.ghost { background: #fff; color: var(--text-2); border: 1px solid var(--border); }
+
+  .table-wrap { background: var(--card); border-radius: 8px; box-shadow: var(--shadow); overflow: hidden; overflow-x: auto; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; min-width: 1200px; }
+  thead { background: #fafafa; }
+  th { padding: 12px 10px; text-align: left; font-weight: 600; color: var(--text-2); border-bottom: 1px solid var(--border); white-space: nowrap; cursor: pointer; user-select: none; }
+  th:hover { background: #f0f2f5; }
+  th .arrow { font-size: 10px; color: var(--text-3); margin-left: 4px; }
+  td { padding: 10px; border-bottom: 1px solid #f0f2f5; vertical-align: middle; }
+  tr:hover { background: #f9fafc; }
+  tr.empty td { text-align: center; color: var(--text-3); padding: 40px; }
+
+  .tag { display: inline-block; padding: 2px 10px; border-radius: 12px; font-size: 12px; font-weight: 500; }
+  .tag-company { background: #ecf5ff; color: #409eff; border: 1px solid #d9ecff; }
+  .tag-status-待审核 { background: #fdf6ec; color: #e6a23c; border: 1px solid #faecd8; }
+  .tag-status-审核中 { background: #ecf5ff; color: #409eff; border: 1px solid #d9ecff; }
+  .tag-status-审核通过 { background: #f0f9eb; color: #67c23a; border: 1px solid #e1f3d8; }
+  .tag-status-待注册 { background: #fef0f0; color: #f56c6c; border: 1px solid #fde2e2; }
+  .tag-status-已验收 { background: #f4f4f5; color: #909399; border: 1px solid #e9e9eb; }
+  .tag-status-null { background: #f4f4f5; color: #c0c4cc; border: 1px solid #e9e9eb; }
+
+  .secret { font-family: monospace; cursor: pointer; }
+  .secret .masked { color: var(--text-3); letter-spacing: 2px; }
+  .secret .value { display: none; color: var(--text); }
+  .secret.show .masked { display: none; }
+  .secret.show .value { display: inline; }
+  .copy-btn { border: none; background: none; color: var(--primary); cursor: pointer; font-size: 12px; margin-left: 4px; }
+  .copy-btn:hover { text-decoration: underline; }
+  .mono { font-family: monospace; font-size: 12px; }
+  .muted { color: var(--text-3); }
+
+  .pager { display: flex; justify-content: space-between; align-items: center; padding: 12px 16px; color: var(--text-3); font-size: 13px; flex-wrap: wrap; gap: 8px; }
+  .pager .pages button { height: 30px; min-width: 30px; padding: 0 8px; border: 1px solid var(--border); background: #fff; border-radius: 4px; cursor: pointer; margin: 0 2px; }
+  .pager .pages button.active { background: var(--primary); color: #fff; border-color: var(--primary); }
+  .pager .pages button:disabled { color: #c0c4cc; cursor: not-allowed; }
+
+  @media (max-width: 768px) { body { padding: 10px; } .header h1 { font-size: 18px; } }
+</style>
+</head>
+<body>
+  <div class="header">
+    <h1>小程序备案管理系统</h1>
+    <div class="meta">数据来源：飞书多维表格 · 共 <span id="totalCount">0</span> 条记录</div>
+  </div>
+
+  <div class="stats" id="stats"></div>
+
+  <div class="toolbar">
+    <input type="text" id="search" placeholder="搜索：公司、小程序名称、appid、邮箱、管理员...">
+    <select id="filterCompany"><option value="">全部公司</option></select>
+    <select id="filterStatus"><option value="">全部状态</option></select>
+    <button class="btn ghost" onclick="resetFilters()">重置</button>
+  </div>
+
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr id="thead"></tr>
+      </thead>
+      <tbody id="tbody"></tbody>
+    </table>
+    <div class="pager">
+      <div id="pageInfo"></div>
+      <div class="pages" id="pages"></div>
+    </div>
+  </div>
+
+<script src="data.js"></script>
+<script>
+const COLS = [
+  { key: 'companyName', label: '公司名称', type: 'tag-company', sortable: true },
+  { key: 'miniProgramName', label: '小程序名称', sortable: true },
+  { key: 'appid', label: 'AppID', type: 'mono-copy', sortable: true },
+  { key: 'status', label: '状态', type: 'status', sortable: true },
+  { key: 'admin', label: '管理员', sortable: true },
+  { key: 'email', label: '邮箱', type: 'mono' },
+  { key: 'submitDate', label: '提交时间', type: 'date', sortable: true },
+  { key: 'filingComplete', label: '备案完成', sortable: true },
+  { key: 'originalId', label: '原始ID', type: 'mono' },
+  { key: 'miniProgramPassword', label: '小程序密码', type: 'secret' },
+  { key: 'emailPassword', label: '邮箱密码', type: 'secret' },
+  { key: 'secret', label: '密钥', type: 'secret' }
+];
+
+const STATUS_LIST = ['待审核','审核中','审核通过','待注册','已验收'];
+let sortKey = null, sortDesc = false, page = 1, pageSize = 20;
+
+function esc(s){ if(s==null) return ''; return String(s).replace(/[&<>"']/g, c=>({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c])); }
+
+function getFiltered(){
+  const q = document.getElementById('search').value.trim().toLowerCase();
+  const fc = document.getElementById('filterCompany').value;
+  const fs = document.getElementById('filterStatus').value;
+  let list = RECORDS.filter(r => {
+    if (fc && r.companyName !== fc) return false;
+    if (fs && r.status !== fs) return false;
+    if (q) {
+      const hay = [r.companyName,r.miniProgramName,r.appid,r.email,r.admin,r.originalId,r.status].filter(x=>x).join(' ').toLowerCase();
+      if (!hay.includes(q)) return false;
+    }
+    return true;
+  });
+  if (sortKey) {
+    list.sort((a,b) => {
+      let va = a[sortKey]||'', vb = b[sortKey]||'';
+      if (sortKey === 'submitDate') { va = va||'0000'; vb = vb||'0000'; }
+      if (va < vb) return sortDesc ? 1 : -1;
+      if (va > vb) return sortDesc ? -1 : 1;
+      return 0;
+    });
+  }
+  return list;
+}
+
+function renderStats(){
+  const total = RECORDS.length;
+  const byStatus = {};
+  STATUS_LIST.forEach(s => byStatus[s] = 0);
+  RECORDS.forEach(r => { if (r.status && byStatus.hasOwnProperty(r.status)) byStatus[r.status]++; });
+  const noStatus = RECORDS.filter(r => !r.status).length;
+  let html = `<div class="stat-card"><div class="num">${total}</div><div class="label">总记录数</div></div>`;
+  STATUS_LIST.forEach(s => {
+    html += `<div class="stat-card status-card"><div class="num">${byStatus[s]}</div><div class="label">${s}</div></div>`;
+  });
+  if (noStatus > 0) html += `<div class="stat-card status-card"><div class="num">${noStatus}</div><div class="label">未标记状态</div></div>`;
+  document.getElementById('stats').innerHTML = html;
+  document.getElementById('totalCount').textContent = total;
+}
+
+function renderFilters(){
+  const companies = [...new Set(RECORDS.map(r=>r.companyName).filter(Boolean))].sort();
+  const selC = document.getElementById('filterCompany');
+  companies.forEach(c => { const o=document.createElement('option'); o.value=c; o.textContent=c; selC.appendChild(o); });
+  const selS = document.getElementById('filterStatus');
+  STATUS_LIST.forEach(s => { const o=document.createElement('option'); o.value=s; o.textContent=s; selS.appendChild(o); });
+}
+
+function renderHead(){
+  document.getElementById('thead').innerHTML = COLS.map(c => {
+    const arrow = sortKey === c.key ? (sortDesc ? '▼' : '▲') : '';
+    return `<th onclick="toggleSort('${c.key}')">${c.label}<span class="arrow">${arrow}</span></th>`;
+  }).join('');
+}
+
+function toggleSort(key){
+  if (sortKey === key) { sortDesc = !sortDesc; } else { sortKey = key; sortDesc = false; }
+  page = 1; render();
+}
+
+function copyText(text, btn){
+  navigator.clipboard.writeText(text).then(() => {
+    const old = btn.textContent; btn.textContent = '已复制';
+    setTimeout(() => btn.textContent = old, 1000);
+  });
+}
+
+function renderBody(){
+  const list = getFiltered();
+  const total = list.length;
+  const totalPages = Math.max(1, Math.ceil(total / pageSize));
+  if (page > totalPages) page = totalPages;
+  const start = (page - 1) * pageSize;
+  const pageList = list.slice(start, start + pageSize);
+
+  if (pageList.length === 0) {
+    document.getElementById('tbody').innerHTML = '<tr class="empty"><td colspan="'+COLS.length+'">没有匹配的记录</td></tr>';
+  } else {
+    document.getElementById('tbody').innerHTML = pageList.map(r => {
+      return '<tr>' + COLS.map(c => {
+        const v = r[c.key];
+        if (v == null || v === '') return '<td class="muted">—</td>';
+        if (c.type === 'tag-company') return `<td><span class="tag ${c.type}">${esc(v)}</span></td>`;
+        if (c.type === 'status') return `<td><span class="tag tag-status-${esc(v)}">${esc(v)}</span></td>`;
+        if (c.type === 'mono') return `<td class="mono">${esc(v)}</td>`;
+        if (c.type === 'mono-copy') return `<td class="mono">${esc(v)}<button class="copy-btn" onclick="copyText('${esc(v)}',this)">复制</button></td>`;
+        if (c.type === 'secret') return `<td><span class="secret" onclick="this.classList.toggle('show')"><span class="masked">••••••</span><span class="value">${esc(v)}</span></span> <button class="copy-btn" onclick="event.stopPropagation();copyText('${esc(v)}',this)">复制</button></td>`;
+        if (c.type === 'date') return `<td>${esc(v)}</td>`;
+        return `<td>${esc(v)}</td>`;
+      }).join('') + '</tr>';
+    }).join('');
+  }
+
+  document.getElementById('pageInfo').textContent = `第 ${total === 0 ? 0 : start+1}-${Math.min(start+pageSize, total)} 条 / 共 ${total} 条`;
+  let pagesHtml = `<button onclick="goPage(1)" ${page===1?'disabled':''}>首页</button>`;
+  pagesHtml += `<button onclick="goPage(${page-1})" ${page===1?'disabled':''}>上一页</button>`;
+  const maxShow = 5; let from = Math.max(1, page - 2), to = Math.min(totalPages, from + maxShow - 1);
+  if (to - from < maxShow - 1) from = Math.max(1, to - maxShow + 1);
+  for (let i = from; i <= to; i++) pagesHtml += `<button onclick="goPage(${i})" class="${i===page?'active':''}">${i}</button>`;
+  pagesHtml += `<button onclick="goPage(${page+1})" ${page===totalPages?'disabled':''}>下一页</button>`;
+  pagesHtml += `<button onclick="goPage(${totalPages})" ${page===totalPages?'disabled':''}>末页</button>`;
+  document.getElementById('pages').innerHTML = pagesHtml;
+}
+
+function goPage(p){ page = p; renderBody(); }
+function resetFilters(){
+  document.getElementById('search').value = '';
+  document.getElementById('filterCompany').value = '';
+  document.getElementById('filterStatus').value = '';
+  sortKey = null; page = 1; render();
+}
+function render(){ renderBody(); }
+
+document.getElementById('search').addEventListener('input', () => { page = 1; renderBody(); });
+document.getElementById('filterCompany').addEventListener('change', () => { page = 1; renderBody(); });
+document.getElementById('filterStatus').addEventListener('change', () => { page = 1; renderBody(); });
+
+renderStats();
+renderFilters();
+renderHead();
+renderBody();
+</script>
+</body>
+</html>
