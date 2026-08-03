@@ -9,12 +9,14 @@
   :root {
     --bg: #f5f7fa; --card: #fff; --border: #e4e7ed; --text: #303133;
     --text-2: #606266; --text-3: #909399; --primary: #409eff;
+    --danger: #f56c6c; --success: #67c23a; --warning: #e6a23c;
     --shadow: 0 2px 12px rgba(0,0,0,.08);
   }
   body { font-family: -apple-system, "Segoe UI", "Microsoft YaHei", sans-serif; background: var(--bg); color: var(--text); padding: 20px; }
   .header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 20px; flex-wrap: wrap; gap: 12px; }
   .header h1 { font-size: 22px; font-weight: 600; }
   .header .meta { color: var(--text-3); font-size: 13px; }
+  .header .actions { display: flex; gap: 8px; }
 
   .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 12px; margin-bottom: 20px; }
   .stat-card { background: var(--card); border-radius: 8px; padding: 16px; box-shadow: var(--shadow); }
@@ -26,19 +28,25 @@
   .toolbar input, .toolbar select { height: 36px; border: 1px solid var(--border); border-radius: 6px; padding: 0 12px; font-size: 14px; outline: none; background: #fff; }
   .toolbar input { flex: 1; min-width: 200px; }
   .toolbar input:focus, .toolbar select:focus { border-color: var(--primary); }
-  .toolbar .btn { height: 36px; padding: 0 16px; border: none; border-radius: 6px; background: var(--primary); color: #fff; cursor: pointer; font-size: 14px; }
-  .toolbar .btn:hover { opacity: .9; }
-  .toolbar .btn.ghost { background: #fff; color: var(--text-2); border: 1px solid var(--border); }
+  .btn { height: 36px; padding: 0 16px; border: none; border-radius: 6px; background: var(--primary); color: #fff; cursor: pointer; font-size: 14px; display: inline-flex; align-items: center; gap: 4px; }
+  .btn:hover { opacity: .9; }
+  .btn.ghost { background: #fff; color: var(--text-2); border: 1px solid var(--border); }
+  .btn.danger { background: var(--danger); }
+  .btn.success { background: var(--success); }
+  .btn.sm { height: 30px; padding: 0 12px; font-size: 13px; }
 
   .table-wrap { background: var(--card); border-radius: 8px; box-shadow: var(--shadow); overflow: hidden; overflow-x: auto; }
-  table { width: 100%; border-collapse: collapse; font-size: 13px; min-width: 1200px; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; min-width: 1300px; }
   thead { background: #fafafa; }
   th { padding: 12px 10px; text-align: left; font-weight: 600; color: var(--text-2); border-bottom: 1px solid var(--border); white-space: nowrap; cursor: pointer; user-select: none; }
   th:hover { background: #f0f2f5; }
   th .arrow { font-size: 10px; color: var(--text-3); margin-left: 4px; }
+  th.op-col { cursor: default; }
+  th.op-col:hover { background: #fafafa; }
   td { padding: 10px; border-bottom: 1px solid #f0f2f5; vertical-align: middle; }
   tr:hover { background: #f9fafc; }
   tr.empty td { text-align: center; color: var(--text-3); padding: 40px; }
+  tr.local-row td:first-child { border-left: 3px solid var(--success); }
 
   .tag { display: inline-block; padding: 2px 10px; border-radius: 12px; font-size: 12px; font-weight: 500; }
   .tag-company { background: #ecf5ff; color: #409eff; border: 1px solid #d9ecff; }
@@ -47,30 +55,85 @@
   .tag-status-审核通过 { background: #f0f9eb; color: #67c23a; border: 1px solid #e1f3d8; }
   .tag-status-待注册 { background: #fef0f0; color: #f56c6c; border: 1px solid #fde2e2; }
   .tag-status-已验收 { background: #f4f4f5; color: #909399; border: 1px solid #e9e9eb; }
-  .tag-status-null { background: #f4f4f5; color: #c0c4cc; border: 1px solid #e9e9eb; }
+  .tag-local { background: #f0f9eb; color: var(--success); border: 1px solid #e1f3d8; font-size: 11px; margin-left: 4px; }
 
   .secret { font-family: monospace; cursor: pointer; }
   .secret .masked { color: var(--text-3); letter-spacing: 2px; }
   .secret .value { display: none; color: var(--text); }
   .secret.show .masked { display: none; }
   .secret.show .value { display: inline; }
-  .copy-btn { border: none; background: none; color: var(--primary); cursor: pointer; font-size: 12px; margin-left: 4px; }
+  .copy-btn { border: none; background: none; color: var(--primary); cursor: pointer; font-size: 12px; margin-left: 4px; padding: 0; }
   .copy-btn:hover { text-decoration: underline; }
   .mono { font-family: monospace; font-size: 12px; }
   .muted { color: var(--text-3); }
+  .row-ops { display: flex; gap: 4px; white-space: nowrap; }
+  .icon-btn { border: 1px solid var(--border); background: #fff; border-radius: 4px; padding: 3px 8px; cursor: pointer; font-size: 12px; color: var(--text-2); }
+  .icon-btn:hover { border-color: var(--primary); color: var(--primary); }
+  .icon-btn.del:hover { border-color: var(--danger); color: var(--danger); }
 
   .pager { display: flex; justify-content: space-between; align-items: center; padding: 12px 16px; color: var(--text-3); font-size: 13px; flex-wrap: wrap; gap: 8px; }
   .pager .pages button { height: 30px; min-width: 30px; padding: 0 8px; border: 1px solid var(--border); background: #fff; border-radius: 4px; cursor: pointer; margin: 0 2px; }
   .pager .pages button.active { background: var(--primary); color: #fff; border-color: var(--primary); }
   .pager .pages button:disabled { color: #c0c4cc; cursor: not-allowed; }
 
-  @media (max-width: 768px) { body { padding: 10px; } .header h1 { font-size: 18px; } }
+  /* 登录遮罩 */
+  .login-mask { position: fixed; inset: 0; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); display: flex; align-items: center; justify-content: center; z-index: 9999; }
+  .login-box { background: #fff; border-radius: 12px; padding: 36px 32px; width: 340px; box-shadow: 0 20px 60px rgba(0,0,0,.3); }
+  .login-box h2 { text-align: center; margin-bottom: 8px; font-size: 22px; }
+  .login-box .sub { text-align: center; color: var(--text-3); font-size: 13px; margin-bottom: 24px; }
+  .login-box input { width: 100%; height: 42px; border: 1px solid var(--border); border-radius: 6px; padding: 0 14px; font-size: 14px; outline: none; margin-bottom: 12px; }
+  .login-box input:focus { border-color: var(--primary); }
+  .login-box button { width: 100%; height: 42px; border: none; border-radius: 6px; background: var(--primary); color: #fff; font-size: 15px; cursor: pointer; }
+  .login-box button:hover { opacity: .9; }
+  .login-box .err { color: var(--danger); font-size: 13px; text-align: center; margin-top: 8px; min-height: 18px; }
+
+  /* 模态框 */
+  .modal-mask { position: fixed; inset: 0; background: rgba(0,0,0,.5); display: none; align-items: center; justify-content: center; z-index: 1000; }
+  .modal-mask.show { display: flex; }
+  .modal { background: #fff; border-radius: 8px; width: 600px; max-width: 95vw; max-height: 90vh; overflow: hidden; display: flex; flex-direction: column; }
+  .modal-head { padding: 16px 20px; border-bottom: 1px solid var(--border); display: flex; justify-content: space-between; align-items: center; }
+  .modal-head h3 { font-size: 16px; }
+  .modal-head .close { cursor: pointer; color: var(--text-3); font-size: 22px; line-height: 1; }
+  .modal-body { padding: 20px; overflow-y: auto; }
+  .modal-foot { padding: 12px 20px; border-top: 1px solid var(--border); display: flex; justify-content: flex-end; gap: 8px; }
+  .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  .form-item { display: flex; flex-direction: column; gap: 4px; }
+  .form-item.full { grid-column: 1 / -1; }
+  .form-item label { font-size: 13px; color: var(--text-2); }
+  .form-item input, .form-item select, .form-item textarea { height: 36px; border: 1px solid var(--border); border-radius: 6px; padding: 0 10px; font-size: 14px; outline: none; }
+  .form-item textarea { height: auto; padding: 8px 10px; resize: vertical; min-height: 60px; font-family: monospace; }
+  .form-item input:focus, .form-item select:focus, .form-item textarea:focus { border-color: var(--primary); }
+
+  .toast { position: fixed; top: 20px; left: 50%; transform: translateX(-50%); background: var(--text); color: #fff; padding: 10px 20px; border-radius: 6px; font-size: 14px; z-index: 9999; opacity: 0; transition: opacity .3s; pointer-events: none; }
+  .toast.show { opacity: .9; }
+  .toast.success { background: var(--success); }
+  .toast.error { background: var(--danger); }
+
+  @media (max-width: 768px) { body { padding: 10px; } .header h1 { font-size: 18px; } .form-grid { grid-template-columns: 1fr; } }
 </style>
 </head>
 <body>
+
+<!-- 登录遮罩 -->
+<div class="login-mask" id="loginMask">
+  <div class="login-box">
+    <h2>小程序备案系统</h2>
+    <div class="sub">请输入访问密码</div>
+    <input type="password" id="loginPwd" placeholder="访问密码" onkeydown="if(event.key==='Enter')doLogin()">
+    <button onclick="doLogin()">登 录</button>
+    <div class="err" id="loginErr"></div>
+  </div>
+</div>
+
+<div id="app" style="display:none;">
   <div class="header">
     <h1>小程序备案管理系统</h1>
-    <div class="meta">数据来源：飞书多维表格 · 共 <span id="totalCount">0</span> 条记录</div>
+    <div class="actions">
+      <span class="meta">共 <span id="totalCount">0</span> 条</span>
+      <button class="btn success sm" onclick="openAdd()">+ 新增</button>
+      <button class="btn ghost sm" onclick="exportJSON()">导出</button>
+      <button class="btn ghost sm" onclick="logout()">退出</button>
+    </div>
   </div>
 
   <div class="stats" id="stats"></div>
@@ -79,14 +142,15 @@
     <input type="text" id="search" placeholder="搜索：公司、小程序名称、appid、邮箱、管理员...">
     <select id="filterCompany"><option value="">全部公司</option></select>
     <select id="filterStatus"><option value="">全部状态</option></select>
-    <button class="btn ghost" onclick="resetFilters()">重置</button>
+    <label style="font-size:13px;color:var(--text-3);display:flex;align-items:center;gap:4px;">
+      <input type="checkbox" id="onlyLocal" style="width:auto;height:auto;"> 只看本地新增
+    </label>
+    <button class="btn ghost sm" onclick="resetFilters()">重置</button>
   </div>
 
   <div class="table-wrap">
     <table>
-      <thead>
-        <tr id="thead"></tr>
-      </thead>
+      <thead><tr id="thead"></tr></thead>
       <tbody id="tbody"></tbody>
     </table>
     <div class="pager">
@@ -94,34 +158,114 @@
       <div class="pages" id="pages"></div>
     </div>
   </div>
+</div>
+
+<!-- 编辑模态框 -->
+<div class="modal-mask" id="editModal">
+  <div class="modal">
+    <div class="modal-head">
+      <h3 id="modalTitle">新增记录</h3>
+      <span class="close" onclick="closeModal()">&times;</span>
+    </div>
+    <div class="modal-body">
+      <div class="form-grid" id="formGrid"></div>
+    </div>
+    <div class="modal-foot">
+      <button class="btn ghost sm" onclick="closeModal()">取消</button>
+      <button class="btn sm" onclick="saveRecord()">保存</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
 
 <script src="data.js"></script>
 <script>
+// ============ 配置 ============
+const ACCESS_PASSWORD = 'wudi2026'; // 登录密码，可自行修改
+const STORAGE_KEY = 'laingzizhiwang_local_records';
+const SESSION_KEY = 'laingzizhiwang_authed';
+
+// ============ 字段定义 ============
 const COLS = [
-  { key: 'companyName', label: '公司名称', type: 'tag-company', sortable: true },
-  { key: 'miniProgramName', label: '小程序名称', sortable: true },
-  { key: 'appid', label: 'AppID', type: 'mono-copy', sortable: true },
-  { key: 'status', label: '状态', type: 'status', sortable: true },
-  { key: 'admin', label: '管理员', sortable: true },
-  { key: 'email', label: '邮箱', type: 'mono' },
-  { key: 'submitDate', label: '提交时间', type: 'date', sortable: true },
-  { key: 'filingComplete', label: '备案完成', sortable: true },
-  { key: 'originalId', label: '原始ID', type: 'mono' },
-  { key: 'miniProgramPassword', label: '小程序密码', type: 'secret' },
-  { key: 'emailPassword', label: '邮箱密码', type: 'secret' },
-  { key: 'secret', label: '密钥', type: 'secret' }
+  { key: 'companyName', label: '公司名称', type: 'tag-company', sortable: true, form: { type: 'select', options: ['', '圣杰科技', '晟锋智联', '追影科技', '伴戏科技', '暖剧科技', '张家口乐强农业科技', '京宝芯联科技', '智承万兴科技', '文智化贤'] } },
+  { key: 'miniProgramName', label: '小程序名称', sortable: true, form: { type: 'text' } },
+  { key: 'appid', label: 'AppID', type: 'mono-copy', sortable: true, form: { type: 'text' } },
+  { key: 'status', label: '状态', type: 'status', sortable: true, form: { type: 'select', options: ['', '待审核', '审核中', '审核通过', '待注册', '已验收'] } },
+  { key: 'admin', label: '管理员', sortable: true, form: { type: 'text' } },
+  { key: 'email', label: '邮箱', type: 'mono', form: { type: 'text' } },
+  { key: 'submitDate', label: '提交时间', type: 'date', sortable: true, form: { type: 'date' } },
+  { key: 'filingComplete', label: '备案完成', sortable: true, form: { type: 'text' } },
+  { key: 'originalId', label: '原始ID', type: 'mono', form: { type: 'text' } },
+  { key: 'miniProgramPassword', label: '小程序密码', type: 'secret', form: { type: 'text' } },
+  { key: 'emailPassword', label: '邮箱密码', type: 'secret', form: { type: 'text' } },
+  { key: 'secret', label: '密钥', type: 'secret', form: { type: 'textarea' } }
 ];
-
 const STATUS_LIST = ['待审核','审核中','审核通过','待注册','已验收'];
-let sortKey = null, sortDesc = false, page = 1, pageSize = 20;
+const OP_COL = { key: '_op', label: '操作', type: 'op' };
 
+let sortKey = null, sortDesc = false, page = 1, pageSize = 20, editingId = null;
+
+// ============ 登录 ============
+function doLogin(){
+  const pwd = document.getElementById('loginPwd').value;
+  if (pwd === ACCESS_PASSWORD) {
+    sessionStorage.setItem(SESSION_KEY, '1');
+    document.getElementById('loginMask').style.display = 'none';
+    document.getElementById('app').style.display = 'block';
+    init();
+  } else {
+    document.getElementById('loginErr').textContent = '密码错误';
+    document.getElementById('loginPwd').value = '';
+  }
+}
+function logout(){
+  sessionStorage.removeItem(SESSION_KEY);
+  location.reload();
+}
+function checkAuth(){
+  if (sessionStorage.getItem(SESSION_KEY) === '1') {
+    document.getElementById('loginMask').style.display = 'none';
+    document.getElementById('app').style.display = 'block';
+    init();
+  }
+}
+
+// ============ 本地数据管理 ============
+function getLocalRecords(){
+  try { return JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]'); } catch(e) { return []; }
+}
+function setLocalRecords(arr){
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(arr));
+}
+function getAllRecords(){
+  const local = getLocalRecords();
+  // 本地新增/修改覆盖原始记录（按 _localId 合并）；本地删除从结果排除
+  const localMap = {};
+  local.forEach(r => { localMap[r._localId] = r; });
+  const merged = RECORDS.map(r => {
+    const local = localMap[r.id];
+    if (local && local._deleted) return null;
+    if (local && local._type === 'edit') return Object.assign({}, r, local, { id: r.id });
+    return r;
+  }).filter(Boolean);
+  // 追加本地新增
+  local.filter(r => r._type === 'add').forEach(r => {
+    merged.push(Object.assign({}, r, { id: r._localId, _isLocal: true }));
+  });
+  return merged;
+}
+
+// ============ 渲染 ============
 function esc(s){ if(s==null) return ''; return String(s).replace(/[&<>"']/g, c=>({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c])); }
 
 function getFiltered(){
   const q = document.getElementById('search').value.trim().toLowerCase();
   const fc = document.getElementById('filterCompany').value;
   const fs = document.getElementById('filterStatus').value;
-  let list = RECORDS.filter(r => {
+  const onlyLocal = document.getElementById('onlyLocal').checked;
+  let list = getAllRecords().filter(r => {
+    if (onlyLocal && !r._isLocal) return false;
     if (fc && r.companyName !== fc) return false;
     if (fs && r.status !== fs) return false;
     if (q) {
@@ -133,7 +277,6 @@ function getFiltered(){
   if (sortKey) {
     list.sort((a,b) => {
       let va = a[sortKey]||'', vb = b[sortKey]||'';
-      if (sortKey === 'submitDate') { va = va||'0000'; vb = vb||'0000'; }
       if (va < vb) return sortDesc ? 1 : -1;
       if (va > vb) return sortDesc ? -1 : 1;
       return 0;
@@ -143,12 +286,14 @@ function getFiltered(){
 }
 
 function renderStats(){
-  const total = RECORDS.length;
+  const all = getAllRecords();
+  const total = all.length;
   const byStatus = {};
   STATUS_LIST.forEach(s => byStatus[s] = 0);
-  RECORDS.forEach(r => { if (r.status && byStatus.hasOwnProperty(r.status)) byStatus[r.status]++; });
-  const noStatus = RECORDS.filter(r => !r.status).length;
-  let html = `<div class="stat-card"><div class="num">${total}</div><div class="label">总记录数</div></div>`;
+  all.forEach(r => { if (r.status && byStatus.hasOwnProperty(r.status)) byStatus[r.status]++; });
+  const noStatus = all.filter(r => !r.status).length;
+  const localCount = all.filter(r => r._isLocal).length;
+  let html = `<div class="stat-card"><div class="num">${total}</div><div class="label">总记录数${localCount?` (本地${localCount})`:''}</div></div>`;
   STATUS_LIST.forEach(s => {
     html += `<div class="stat-card status-card"><div class="num">${byStatus[s]}</div><div class="label">${s}</div></div>`;
   });
@@ -158,15 +303,19 @@ function renderStats(){
 }
 
 function renderFilters(){
-  const companies = [...new Set(RECORDS.map(r=>r.companyName).filter(Boolean))].sort();
+  const all = getAllRecords();
+  const companies = [...new Set(all.map(r=>r.companyName).filter(Boolean))].sort();
   const selC = document.getElementById('filterCompany');
+  const curC = selC.value;
+  selC.innerHTML = '<option value="">全部公司</option>';
   companies.forEach(c => { const o=document.createElement('option'); o.value=c; o.textContent=c; selC.appendChild(o); });
-  const selS = document.getElementById('filterStatus');
-  STATUS_LIST.forEach(s => { const o=document.createElement('option'); o.value=s; o.textContent=s; selS.appendChild(o); });
+  selC.value = curC;
 }
 
 function renderHead(){
-  document.getElementById('thead').innerHTML = COLS.map(c => {
+  const allCols = [...COLS, OP_COL];
+  document.getElementById('thead').innerHTML = allCols.map(c => {
+    if (c.type === 'op') return `<th class="op-col">${c.label}</th>`;
     const arrow = sortKey === c.key ? (sortDesc ? '▼' : '▲') : '';
     return `<th onclick="toggleSort('${c.key}')">${c.label}<span class="arrow">${arrow}</span></th>`;
   }).join('');
@@ -174,7 +323,7 @@ function renderHead(){
 
 function toggleSort(key){
   if (sortKey === key) { sortDesc = !sortDesc; } else { sortKey = key; sortDesc = false; }
-  page = 1; render();
+  page = 1; renderBody(); renderHead();
 }
 
 function copyText(text, btn){
@@ -191,20 +340,27 @@ function renderBody(){
   if (page > totalPages) page = totalPages;
   const start = (page - 1) * pageSize;
   const pageList = list.slice(start, start + pageSize);
+  const allCols = [...COLS, OP_COL];
 
   if (pageList.length === 0) {
-    document.getElementById('tbody').innerHTML = '<tr class="empty"><td colspan="'+COLS.length+'">没有匹配的记录</td></tr>';
+    document.getElementById('tbody').innerHTML = '<tr class="empty"><td colspan="'+allCols.length+'">没有匹配的记录</td></tr>';
   } else {
     document.getElementById('tbody').innerHTML = pageList.map(r => {
-      return '<tr>' + COLS.map(c => {
+      const isLocal = r._isLocal;
+      return '<tr class="'+(isLocal?'local-row':'')+'">' + allCols.map(c => {
+        if (c.type === 'op') {
+          return '<td><div class="row-ops">' +
+            `<button class="icon-btn" onclick="openEdit('${esc(r.id)}')">编辑</button>` +
+            `<button class="icon-btn del" onclick="deleteRecord('${esc(r.id)}')">删除</button>` +
+            '</div></td>';
+        }
         const v = r[c.key];
         if (v == null || v === '') return '<td class="muted">—</td>';
-        if (c.type === 'tag-company') return `<td><span class="tag ${c.type}">${esc(v)}</span></td>`;
+        if (c.type === 'tag-company') return `<td><span class="tag ${c.type}">${esc(v)}</span>${isLocal?'<span class="tag-local">本地</span>':''}</td>`;
         if (c.type === 'status') return `<td><span class="tag tag-status-${esc(v)}">${esc(v)}</span></td>`;
         if (c.type === 'mono') return `<td class="mono">${esc(v)}</td>`;
         if (c.type === 'mono-copy') return `<td class="mono">${esc(v)}<button class="copy-btn" onclick="copyText('${esc(v)}',this)">复制</button></td>`;
         if (c.type === 'secret') return `<td><span class="secret" onclick="this.classList.toggle('show')"><span class="masked">••••••</span><span class="value">${esc(v)}</span></span> <button class="copy-btn" onclick="event.stopPropagation();copyText('${esc(v)}',this)">复制</button></td>`;
-        if (c.type === 'date') return `<td>${esc(v)}</td>`;
         return `<td>${esc(v)}</td>`;
       }).join('') + '</tr>';
     }).join('');
@@ -226,18 +382,146 @@ function resetFilters(){
   document.getElementById('search').value = '';
   document.getElementById('filterCompany').value = '';
   document.getElementById('filterStatus').value = '';
+  document.getElementById('onlyLocal').checked = false;
   sortKey = null; page = 1; render();
 }
-function render(){ renderBody(); }
+function render(){ renderStats(); renderFilters(); renderBody(); }
+
+// ============ 增删改 ============
+function openAdd(){
+  editingId = null;
+  document.getElementById('modalTitle').textContent = '新增记录';
+  const grid = document.getElementById('formGrid');
+  grid.innerHTML = COLS.map(c => {
+    const f = c.form;
+    const fullWidth = (f.type === 'textarea') ? ' full' : '';
+    let input;
+    const today = new Date().toISOString().slice(0,10);
+    if (f.type === 'select') {
+      input = `<select id="f_${c.key}">${f.options.map(o => `<option value="${esc(o)}">${esc(o)||'(空)'}</option>`).join('')}</select>`;
+    } else if (f.type === 'date') {
+      input = `<input type="date" id="f_${c.key}" value="${today}">`;
+    } else if (f.type === 'textarea') {
+      input = `<textarea id="f_${c.key}"></textarea>`;
+    } else {
+      input = `<input type="text" id="f_${c.key}">`;
+    }
+    return `<div class="form-item${fullWidth}"><label>${c.label}</label>${input}</div>`;
+  }).join('');
+  document.getElementById('editModal').classList.add('show');
+}
+
+function openEdit(id){
+  const all = getAllRecords();
+  const r = all.find(x => x.id === id);
+  if (!r) { showToast('记录不存在', 'error'); return; }
+  editingId = id;
+  document.getElementById('modalTitle').textContent = '编辑记录';
+  const grid = document.getElementById('formGrid');
+  grid.innerHTML = COLS.map(c => {
+    const f = c.form;
+    const val = r[c.key] || '';
+    const fullWidth = (f.type === 'textarea') ? ' full' : '';
+    let input;
+    if (f.type === 'select') {
+      input = `<select id="f_${c.key}">${f.options.map(o => `<option value="${esc(o)}" ${o===val?'selected':''}>${esc(o)||'(空)'}</option>`).join('')}</select>`;
+    } else if (f.type === 'date') {
+      const dv = val ? val.split(' ')[0] : '';
+      input = `<input type="date" id="f_${c.key}" value="${esc(dv)}">`;
+    } else if (f.type === 'textarea') {
+      input = `<textarea id="f_${c.key}">${esc(val)}</textarea>`;
+    } else {
+      input = `<input type="text" id="f_${c.key}" value="${esc(val)}">`;
+    }
+    return `<div class="form-item${fullWidth}"><label>${c.label}</label>${input}</div>`;
+  }).join('');
+  document.getElementById('editModal').classList.add('show');
+}
+
+function closeModal(){ document.getElementById('editModal').classList.remove('show'); }
+
+function saveRecord(){
+  const data = { _localId: editingId || ('local_' + Date.now() + '_' + Math.random().toString(36).slice(2,8)) };
+  COLS.forEach(c => {
+    const el = document.getElementById('f_' + c.key);
+    if (el) data[c.key] = el.value.trim() || null;
+  });
+  const local = getLocalRecords();
+  if (editingId) {
+    // 编辑：找到原始或已存在的本地记录
+    const origIdx = local.findIndex(r => r._localId === editingId);
+    if (origIdx >= 0) {
+      // 已经是本地记录，直接更新
+      local[origIdx] = Object.assign({}, local[origIdx], data);
+    } else {
+      // 原始记录，标记为编辑
+      data._type = 'edit';
+      local.push(data);
+    }
+    showToast('已保存修改', 'success');
+  } else {
+    // 新增
+    data._type = 'add';
+    local.push(data);
+    showToast('已新增记录', 'success');
+  }
+  setLocalRecords(local);
+  closeModal();
+  render();
+}
+
+function deleteRecord(id){
+  if (!confirm('确认删除该记录？')) return;
+  const local = getLocalRecords();
+  const existingIdx = local.findIndex(r => r._localId === id);
+  if (existingIdx >= 0 && local[existingIdx]._type === 'add') {
+    // 本地新增的记录，直接从本地删除
+    local.splice(existingIdx, 1);
+  } else {
+    // 原始记录，标记为删除
+    local.push({ _localId: id, _deleted: true });
+  }
+  setLocalRecords(local);
+  showToast('已删除', 'success');
+  render();
+}
+
+function exportJSON(){
+  const all = getAllRecords().map(r => {
+    const clean = {};
+    COLS.forEach(c => { clean[c.key] = r[c.key]; });
+    return clean;
+  });
+  const blob = new Blob([JSON.stringify(all, null, 2)], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = 'records-' + new Date().toISOString().slice(0,10) + '.json';
+  a.click();
+  URL.revokeObjectURL(url);
+  showToast('已导出', 'success');
+}
+
+function showToast(msg, type){
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.className = 'toast show ' + (type || '');
+  setTimeout(() => t.className = 'toast', 2000);
+}
+
+function init(){
+  renderStats();
+  renderFilters();
+  renderHead();
+  renderBody();
+}
 
 document.getElementById('search').addEventListener('input', () => { page = 1; renderBody(); });
 document.getElementById('filterCompany').addEventListener('change', () => { page = 1; renderBody(); });
 document.getElementById('filterStatus').addEventListener('change', () => { page = 1; renderBody(); });
+document.getElementById('onlyLocal').addEventListener('change', () => { page = 1; renderBody(); });
 
-renderStats();
-renderFilters();
-renderHead();
-renderBody();
+checkAuth();
 </script>
 </body>
 </html>
