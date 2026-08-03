@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="zh-CN">
 <head>
 <meta charset="UTF-8">
@@ -10,111 +10,173 @@
     --bg: #f5f7fa; --card: #fff; --border: #e4e7ed; --text: #303133;
     --text-2: #606266; --text-3: #909399; --primary: #409eff;
     --danger: #f56c6c; --success: #67c23a; --warning: #e6a23c;
-    --shadow: 0 2px 12px rgba(0,0,0,.08);
+    --sidebar-w: 200px; --shadow: 0 2px 12px rgba(0,0,0,.08);
   }
-  body { font-family: -apple-system, "Segoe UI", "Microsoft YaHei", sans-serif; background: var(--bg); color: var(--text); padding: 20px; }
-  .header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 20px; flex-wrap: wrap; gap: 12px; }
-  .header h1 { font-size: 22px; font-weight: 600; }
-  .header .meta { color: var(--text-3); font-size: 13px; }
-  .header .actions { display: flex; gap: 8px; }
+  html, body { height: 100%; }
+  body { font-family: -apple-system, "Segoe UI", "Microsoft YaHei", sans-serif; background: var(--bg); color: var(--text); }
 
-  .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 12px; margin-bottom: 20px; }
-  .stat-card { background: var(--card); border-radius: 8px; padding: 16px; box-shadow: var(--shadow); }
-  .stat-card .num { font-size: 28px; font-weight: 700; color: var(--primary); }
-  .stat-card .label { font-size: 13px; color: var(--text-3); margin-top: 4px; }
-  .stat-card.status-card .num { font-size: 22px; }
+  .layout { display: flex; min-height: 100vh; }
 
-  .toolbar { background: var(--card); border-radius: 8px; padding: 14px; box-shadow: var(--shadow); margin-bottom: 16px; display: flex; gap: 12px; flex-wrap: wrap; align-items: center; }
-  .toolbar input, .toolbar select { height: 36px; border: 1px solid var(--border); border-radius: 6px; padding: 0 12px; font-size: 14px; outline: none; background: #fff; }
-  .toolbar input { flex: 1; min-width: 200px; }
-  .toolbar input:focus, .toolbar select:focus { border-color: var(--primary); }
-  .btn { height: 36px; padding: 0 16px; border: none; border-radius: 6px; background: var(--primary); color: #fff; cursor: pointer; font-size: 14px; display: inline-flex; align-items: center; gap: 4px; }
+  /* 左侧导航 */
+  .sidebar { width: var(--sidebar-w); background: #1f2937; color: #cbd5e1; flex-shrink: 0; position: fixed; top: 0; bottom: 0; left: 0; display: flex; flex-direction: column; z-index: 50; transition: width .25s; }
+  .sidebar .logo { padding: 16px 14px; font-size: 15px; font-weight: 700; color: #fff; border-bottom: 1px solid #374151; display: flex; align-items: center; gap: 8px; white-space: nowrap; overflow: hidden; }
+  .sidebar .logo .logo-icon { flex-shrink: 0; }
+  .sidebar .logo .logo-text { flex: 1; }
+  .sidebar .logo .sidebar-toggle { background: #374151; border: none; color: #cbd5e1; width: 22px; height: 22px; border-radius: 4px; cursor: pointer; font-size: 14px; flex-shrink: 0; transition: transform .25s; }
+  .sidebar .logo .sidebar-toggle:hover { background: var(--primary); color: #fff; }
+  .sidebar .nav-list { flex: 1; padding: 12px 0; overflow-y: auto; }
+  .sidebar .nav-item { padding: 12px 20px; cursor: pointer; display: flex; align-items: center; gap: 10px; font-size: 14px; border-left: 3px solid transparent; transition: all .15s; white-space: nowrap; overflow: hidden; }
+  .sidebar .nav-item:hover { background: #374151; color: #fff; }
+  .sidebar .nav-item.active { background: #374151; color: #fff; border-left-color: var(--primary); }
+  .sidebar .nav-item .icon { width: 18px; text-align: center; flex-shrink: 0; }
+  .sidebar .sidebar-foot { padding: 12px 16px; border-top: 1px solid #374151; font-size: 12px; color: #64748b; white-space: nowrap; overflow: hidden; }
+  .sidebar .sidebar-foot .total { color: #cbd5e1; }
+  .sidebar .sidebar-foot .sidebar-logout { margin-top: 6px; width: 100%; }
+
+  .sidebar.collapsed { width: 60px; }
+  .sidebar.collapsed .logo { padding: 16px 8px; justify-content: center; gap: 0; }
+  .sidebar.collapsed .logo .logo-text { display: none; }
+  .sidebar.collapsed .nav-item { padding: 12px 0; justify-content: center; }
+  .sidebar.collapsed .nav-item .nav-text { display: none; }
+  .sidebar.collapsed .sidebar-foot { padding: 12px 8px; text-align: center; }
+  .sidebar.collapsed .sidebar-foot .foot-text, .sidebar.collapsed .sidebar-foot .sidebar-logout { display: none; }
+  .main { transition: margin-left .25s; }
+  .main.collapsed { margin-left: 60px; }
+
+  .main { flex: 1; margin-left: var(--sidebar-w); padding: 20px; min-width: 0; }
+
+  .page { display: none; }
+  .page.active { display: block; }
+  .header-row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; flex-wrap: wrap; gap: 12px; }
+  .header-row h1 { font-size: 20px; }
+  .header-row .actions { display: flex; gap: 8px; align-items: center; }
+  .section { background: var(--card); border-radius: 8px; box-shadow: var(--shadow); padding: 18px; margin-bottom: 14px; }
+  .section h2 { font-size: 15px; margin-bottom: 14px; display: flex; align-items: center; gap: 6px; }
+  .section h2 .desc { font-size: 12px; color: var(--text-3); font-weight: normal; }
+  .muted { color: var(--text-3); }
+  .mono { font-family: monospace; font-size: 12px; }
+
+  .btn { height: 34px; padding: 0 14px; border: none; border-radius: 5px; background: var(--primary); color: #fff; cursor: pointer; font-size: 13px; display: inline-flex; align-items: center; gap: 4px; }
   .btn:hover { opacity: .9; }
   .btn.ghost { background: #fff; color: var(--text-2); border: 1px solid var(--border); }
   .btn.danger { background: var(--danger); }
   .btn.success { background: var(--success); }
-  .btn.sm { height: 30px; padding: 0 12px; font-size: 13px; }
+  .btn.warning { background: var(--warning); }
+  .btn.sm { height: 28px; padding: 0 10px; font-size: 12px; }
+
+  .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 10px; margin-bottom: 14px; }
+  .stat-card { background: var(--card); border-radius: 8px; padding: 14px; box-shadow: var(--shadow); }
+  .stat-card .num { font-size: 24px; font-weight: 700; color: var(--primary); }
+  .stat-card .label { font-size: 12px; color: var(--text-3); margin-top: 3px; }
+  .stat-card.status-card .num { font-size: 20px; }
+
+  .toolbar { background: var(--card); border-radius: 8px; padding: 12px; box-shadow: var(--shadow); margin-bottom: 12px; display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+  .toolbar input, .toolbar select { height: 32px; border: 1px solid var(--border); border-radius: 5px; padding: 0 10px; font-size: 13px; outline: none; background: #fff; }
+  .toolbar input:focus, .toolbar select:focus { border-color: var(--primary); }
 
   .table-wrap { background: var(--card); border-radius: 8px; box-shadow: var(--shadow); overflow: hidden; overflow-x: auto; }
-  table { width: 100%; border-collapse: collapse; font-size: 13px; min-width: 1300px; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; min-width: 900px; }
   thead { background: #fafafa; }
-  th { padding: 12px 10px; text-align: left; font-weight: 600; color: var(--text-2); border-bottom: 1px solid var(--border); white-space: nowrap; cursor: pointer; user-select: none; }
+  th { padding: 10px; text-align: left; font-weight: 600; color: var(--text-2); border-bottom: 1px solid var(--border); white-space: nowrap; cursor: pointer; user-select: none; }
   th:hover { background: #f0f2f5; }
-  th .arrow { font-size: 10px; color: var(--text-3); margin-left: 4px; }
+  th .arrow { font-size: 10px; color: var(--text-3); margin-left: 3px; }
   th.op-col { cursor: default; }
   th.op-col:hover { background: #fafafa; }
-  td { padding: 10px; border-bottom: 1px solid #f0f2f5; vertical-align: middle; }
+  td { padding: 9px 10px; border-bottom: 1px solid #f0f2f5; vertical-align: middle; }
   tr:hover { background: #f9fafc; }
-  tr.empty td { text-align: center; color: var(--text-3); padding: 40px; }
-  tr.local-row td:first-child { border-left: 3px solid var(--success); }
+  tr.empty td { text-align: center; color: var(--text-3); padding: 30px; }
 
-  .tag { display: inline-block; padding: 2px 10px; border-radius: 12px; font-size: 12px; font-weight: 500; }
-  .tag-company { background: #ecf5ff; color: #409eff; border: 1px solid #d9ecff; }
+  .tag { display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: 11px; font-weight: 500; }
   .tag-status-待审核 { background: #fdf6ec; color: #e6a23c; border: 1px solid #faecd8; }
   .tag-status-审核中 { background: #ecf5ff; color: #409eff; border: 1px solid #d9ecff; }
   .tag-status-审核通过 { background: #f0f9eb; color: #67c23a; border: 1px solid #e1f3d8; }
   .tag-status-待注册 { background: #fef0f0; color: #f56c6c; border: 1px solid #fde2e2; }
   .tag-status-已验收 { background: #f4f4f5; color: #909399; border: 1px solid #e9e9eb; }
-  .tag-local { background: #f0f9eb; color: var(--success); border: 1px solid #e1f3d8; font-size: 11px; margin-left: 4px; }
 
-  .secret { font-family: monospace; cursor: pointer; }
-  .secret .masked { color: var(--text-3); letter-spacing: 2px; }
-  .secret .value { display: none; color: var(--text); }
-  .secret.show .masked { display: none; }
-  .secret.show .value { display: inline; }
-  .copy-btn { border: none; background: none; color: var(--primary); cursor: pointer; font-size: 12px; margin-left: 4px; padding: 0; }
-  .copy-btn:hover { text-decoration: underline; }
-  .mono { font-family: monospace; font-size: 12px; }
-  .muted { color: var(--text-3); }
-  .row-ops { display: flex; gap: 4px; white-space: nowrap; }
-  .icon-btn { border: 1px solid var(--border); background: #fff; border-radius: 4px; padding: 3px 8px; cursor: pointer; font-size: 12px; color: var(--text-2); }
-  .icon-btn:hover { border-color: var(--primary); color: var(--primary); }
-  .icon-btn.del:hover { border-color: var(--danger); color: var(--danger); }
+  .copy-cell:hover { background: #ecf5ff !important; color: var(--primary); cursor: pointer; }
+  .copy-cell { transition: background .15s; }
+  .col-narrow { max-width: 180px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .col-secret { max-width: 140px; }
+  .col-email { max-width: 160px; }
 
-  .pager { display: flex; justify-content: space-between; align-items: center; padding: 12px 16px; color: var(--text-3); font-size: 13px; flex-wrap: wrap; gap: 8px; }
-  .pager .pages button { height: 30px; min-width: 30px; padding: 0 8px; border: 1px solid var(--border); background: #fff; border-radius: 4px; cursor: pointer; margin: 0 2px; }
+  .row-ops { display: flex; gap: 3px; white-space: nowrap; }
+  .icon-btn-sm { border: 1px solid var(--border); background: #fff; border-radius: 3px; padding: 2px 7px; cursor: pointer; font-size: 11px; color: var(--text-2); }
+  .icon-btn-sm:hover { border-color: var(--primary); color: var(--primary); }
+  .icon-btn-sm.del:hover { border-color: var(--danger); color: var(--danger); }
+
+  .pager { display: flex; justify-content: space-between; align-items: center; padding: 10px 14px; color: var(--text-3); font-size: 12px; flex-wrap: wrap; gap: 6px; }
+  .pager .pages button { height: 28px; min-width: 28px; padding: 0 7px; border: 1px solid var(--border); background: #fff; border-radius: 3px; cursor: pointer; margin: 0 1px; }
   .pager .pages button.active { background: var(--primary); color: #fff; border-color: var(--primary); }
   .pager .pages button:disabled { color: #c0c4cc; cursor: not-allowed; }
 
-  /* 登录遮罩 */
-  .login-mask { position: fixed; inset: 0; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); display: flex; align-items: center; justify-content: center; z-index: 9999; }
-  .login-box { background: #fff; border-radius: 12px; padding: 36px 32px; width: 340px; box-shadow: 0 20px 60px rgba(0,0,0,.3); }
-  .login-box h2 { text-align: center; margin-bottom: 8px; font-size: 22px; }
-  .login-box .sub { text-align: center; color: var(--text-3); font-size: 13px; margin-bottom: 24px; }
-  .login-box input { width: 100%; height: 42px; border: 1px solid var(--border); border-radius: 6px; padding: 0 14px; font-size: 14px; outline: none; margin-bottom: 12px; }
-  .login-box input:focus { border-color: var(--primary); }
-  .login-box button { width: 100%; height: 42px; border: none; border-radius: 6px; background: var(--primary); color: #fff; font-size: 15px; cursor: pointer; }
-  .login-box button:hover { opacity: .9; }
-  .login-box .err { color: var(--danger); font-size: 13px; text-align: center; margin-top: 8px; min-height: 18px; }
+  .company-monitor-row { display: flex; align-items: center; gap: 10px; padding: 10px 12px; border: 1px solid var(--border); border-radius: 6px; margin-bottom: 8px; background: #fff; }
+  .company-monitor-row .status-text { font-size: 12px; color: var(--text-3); }
+  .company-monitor-row .status-text.running { color: var(--success); }
+  .switch { position: relative; display: inline-block; width: 40px; height: 22px; }
+  .switch input { opacity: 0; width: 0; height: 0; }
+  .switch .slider { position: absolute; cursor: pointer; inset: 0; background: #c0c4cc; border-radius: 22px; transition: .3s; }
+  .switch .slider:before { content: ""; position: absolute; height: 18px; width: 18px; left: 2px; bottom: 2px; background: #fff; border-radius: 50%; transition: .3s; }
+  .switch input:checked + .slider { background: var(--success); }
+  .switch input:checked + .slider:before { transform: translateX(18px); }
 
-  /* 模态框 */
+  .login-mask { position: fixed; inset: 0; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); display: flex; align-items: center; justify-content: center; z-index: 9999; }
+  .login-box { background: #fff; border-radius: 10px; padding: 32px 28px; width: 320px; box-shadow: 0 20px 60px rgba(0,0,0,.3); }
+  .login-box h2 { text-align: center; margin-bottom: 6px; font-size: 20px; }
+  .login-box .sub { text-align: center; color: var(--text-3); font-size: 12px; margin-bottom: 20px; }
+  .login-box input { width: 100%; height: 40px; border: 1px solid var(--border); border-radius: 5px; padding: 0 12px; font-size: 14px; outline: none; margin-bottom: 10px; }
+  .login-box input:focus { border-color: var(--primary); }
+  .login-box button { width: 100%; height: 40px; border: none; border-radius: 5px; background: var(--primary); color: #fff; font-size: 14px; cursor: pointer; }
+  .login-box .err { color: var(--danger); font-size: 12px; text-align: center; margin-top: 6px; min-height: 16px; }
+
   .modal-mask { position: fixed; inset: 0; background: rgba(0,0,0,.5); display: none; align-items: center; justify-content: center; z-index: 1000; }
   .modal-mask.show { display: flex; }
   .modal { background: #fff; border-radius: 8px; width: 600px; max-width: 95vw; max-height: 90vh; overflow: hidden; display: flex; flex-direction: column; }
-  .modal-head { padding: 16px 20px; border-bottom: 1px solid var(--border); display: flex; justify-content: space-between; align-items: center; }
-  .modal-head h3 { font-size: 16px; }
+  .modal-head { padding: 14px 18px; border-bottom: 1px solid var(--border); display: flex; justify-content: space-between; align-items: center; }
+  .modal-head h3 { font-size: 15px; }
   .modal-head .close { cursor: pointer; color: var(--text-3); font-size: 22px; line-height: 1; }
-  .modal-body { padding: 20px; overflow-y: auto; }
-  .modal-foot { padding: 12px 20px; border-top: 1px solid var(--border); display: flex; justify-content: flex-end; gap: 8px; }
-  .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
-  .form-item { display: flex; flex-direction: column; gap: 4px; }
+  .modal-body { padding: 18px; overflow-y: auto; }
+  .modal-foot { padding: 10px 18px; border-top: 1px solid var(--border); display: flex; justify-content: flex-end; gap: 6px; }
+  .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .form-item { display: flex; flex-direction: column; gap: 3px; }
   .form-item.full { grid-column: 1 / -1; }
-  .form-item label { font-size: 13px; color: var(--text-2); }
-  .form-item input, .form-item select, .form-item textarea { height: 36px; border: 1px solid var(--border); border-radius: 6px; padding: 0 10px; font-size: 14px; outline: none; }
+  .form-item label { font-size: 12px; color: var(--text-2); }
+  .form-item input, .form-item select, .form-item textarea { height: 34px; border: 1px solid var(--border); border-radius: 5px; padding: 0 10px; font-size: 13px; outline: none; }
   .form-item textarea { height: auto; padding: 8px 10px; resize: vertical; min-height: 60px; font-family: monospace; }
   .form-item input:focus, .form-item select:focus, .form-item textarea:focus { border-color: var(--primary); }
 
-  .toast { position: fixed; top: 20px; left: 50%; transform: translateX(-50%); background: var(--text); color: #fff; padding: 10px 20px; border-radius: 6px; font-size: 14px; z-index: 9999; opacity: 0; transition: opacity .3s; pointer-events: none; }
+  .toast { position: fixed; top: 16px; left: 50%; transform: translateX(-50%); background: var(--text); color: #fff; padding: 8px 18px; border-radius: 5px; font-size: 13px; z-index: 9999; opacity: 0; transition: opacity .3s; pointer-events: none; }
   .toast.show { opacity: .9; }
   .toast.success { background: var(--success); }
   .toast.error { background: var(--danger); }
 
-  @media (max-width: 768px) { body { padding: 10px; } .header h1 { font-size: 18px; } .form-grid { grid-template-columns: 1fr; } }
+  .config-section { margin-bottom: 14px; }
+  .config-section .section-title { font-size: 14px; font-weight: 600; margin-bottom: 10px; padding-bottom: 6px; border-bottom: 1px solid var(--border); }
+  .time-list { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 10px; }
+  .time-item { display: flex; align-items: center; gap: 3px; background: #f0f2f5; padding: 3px 8px; border-radius: 10px; font-size: 12px; }
+  .time-item .remove { cursor: pointer; color: var(--text-3); margin-left: 3px; }
+  .time-item .remove:hover { color: var(--danger); }
+  .help-tip { background: #ecf5ff; border: 1px solid #d9ecff; border-radius: 5px; padding: 8px 12px; font-size: 12px; color: var(--text-2); margin-bottom: 10px; line-height: 1.5; }
+  .help-tip code { background: #fff; padding: 1px 4px; border-radius: 3px; font-size: 11px; }
+  .help-tip.warn { background: #fdf6ec; border-color: #faecd8; color: #e6a23c; }
+
+  .monitor-status-bar { background: linear-gradient(90deg, #f0f9eb, #ecf5ff); border: 1px solid #e1f3d8; border-radius: 6px; padding: 10px 14px; margin-bottom: 12px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px; font-size: 13px; }
+  .monitor-status-bar .left { display: flex; gap: 16px; align-items: center; }
+  .monitor-status-bar .pulse { display: inline-block; width: 8px; height: 8px; background: var(--success); border-radius: 50%; animation: pulse 1.5s infinite; }
+  @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: .4; } }
+
+  @media (max-width: 768px) {
+    .sidebar { width: 60px; }
+    .sidebar .logo { font-size: 12px; padding: 16px 8px; }
+    .sidebar .nav-item { padding: 12px 8px; justify-content: center; font-size: 12px; }
+    .sidebar .nav-item .nav-text { display: none; }
+    .sidebar .sidebar-foot { display: none; }
+    .main { margin-left: 60px; padding: 12px; }
+    .form-grid { grid-template-columns: 1fr; }
+  }
 </style>
 </head>
 <body>
 
-<!-- 登录遮罩 -->
 <div class="login-mask" id="loginMask">
   <div class="login-box">
     <h2>小程序备案系统</h2>
@@ -125,55 +187,182 @@
   </div>
 </div>
 
-<div id="app" style="display:none;">
-  <div class="header">
-    <h1>小程序备案管理系统</h1>
-    <div class="actions">
-      <span class="meta">共 <span id="totalCount">0</span> 条</span>
-      <button class="btn success sm" onclick="openAdd()">+ 新增</button>
-      <button class="btn ghost sm" onclick="exportJSON()">导出</button>
-      <button class="btn ghost sm" onclick="logout()">退出</button>
+<div class="layout" style="display:none;" id="layout">
+  <aside class="sidebar" id="sidebar">
+    <div class="logo">
+      <span class="logo-icon">📋</span><span class="logo-text">备案管理</span>
+      <button class="sidebar-toggle" onclick="toggleSidebar()" title="折叠/展开">‹</button>
     </div>
-  </div>
-
-  <div class="stats" id="stats"></div>
-
-  <div class="toolbar">
-    <input type="text" id="search" placeholder="搜索：公司、小程序名称、appid、邮箱、管理员...">
-    <select id="filterCompany"><option value="">全部公司</option></select>
-    <select id="filterStatus"><option value="">全部状态</option></select>
-    <label style="font-size:13px;color:var(--text-3);display:flex;align-items:center;gap:4px;">
-      <input type="checkbox" id="onlyLocal" style="width:auto;height:auto;"> 只看本地新增
-    </label>
-    <button class="btn ghost sm" onclick="resetFilters()">重置</button>
-  </div>
-
-  <div class="table-wrap">
-    <table>
-      <thead><tr id="thead"></tr></thead>
-      <tbody id="tbody"></tbody>
-    </table>
-    <div class="pager">
-      <div id="pageInfo"></div>
-      <div class="pages" id="pages"></div>
+    <nav class="nav-list">
+      <div class="nav-item active" data-page="dashboard" onclick="switchPage('dashboard')">
+        <span class="icon">🏠</span><span class="nav-text">首页看板</span>
+      </div>
+      <div class="nav-item" data-page="data" onclick="switchPage('data')">
+        <span class="icon">📊</span><span class="nav-text">数据管理</span>
+      </div>
+      <div class="nav-item" data-page="monitor" onclick="switchPage('monitor')">
+        <span class="icon">🔔</span><span class="nav-text">监控配置</span>
+      </div>
+    </nav>
+    <div class="sidebar-foot">
+      <div class="foot-text">共 <span class="total" id="totalCount">0</span> 条</div>
+      <button class="btn ghost sm sidebar-logout" onclick="logout()">退出</button>
     </div>
+  </aside>
+
+  <main class="main" id="main">
+
+    <!-- ===== 首页看板页 ===== -->
+    <div class="page active" id="page-dashboard">
+      <div class="header-row">
+        <h1>首页看板</h1>
+        <div class="actions">
+          <span style="font-size:12px;color:var(--text-3);" id="dashboardTime"></span>
+        </div>
+      </div>
+      <div class="stats" id="dashboardStats"></div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px;">
+        <div class="section" style="margin-bottom:0;">
+          <h2>🏢 公司分布 <span class="desc">按公司统计数量</span></h2>
+          <div id="companyDist"></div>
+        </div>
+        <div class="section" style="margin-bottom:0;">
+          <h2>📊 状态分布 <span class="desc">按状态统计数量</span></h2>
+          <div id="statusDist"></div>
+        </div>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px;">
+        <div class="section" style="margin-bottom:0;border-left:3px solid var(--warning);">
+          <h2 style="color:var(--warning);">⏰ 本周预计审核通过 <span class="desc">提交时间+8天落本周</span></h2>
+          <div id="expectedWeek"></div>
+        </div>
+        <div class="section" style="margin-bottom:0;border-left:3px solid var(--danger);">
+          <h2 style="color:var(--danger);">⚠️ 待处理事项 <span class="desc">需关注的项</span></h2>
+          <div id="todoItems"></div>
+        </div>
+      </div>
+      <div class="section">
+        <h2>🕒 最近提交 <span class="desc">最新 10 条记录</span></h2>
+        <div class="table-wrap" style="box-shadow:none;">
+          <table style="min-width:auto;font-size:12px;">
+            <thead><tr><th>公司</th><th>小程序名称</th><th>状态</th><th>提交时间</th></tr></thead>
+            <tbody id="recentList"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- ===== 数据管理页 ===== -->
+    <div class="page" id="page-data">
+      <div class="header-row">
+        <h1>小程序备案数据</h1>
+        <div class="actions">
+          <button class="btn success sm" onclick="openAdd()">+ 新增</button>
+          <button class="btn ghost sm" onclick="exportJSON()">导出</button>
+        </div>
+      </div>
+      <div class="toolbar">
+        <select id="filterCompany"><option value="">全部公司</option></select>
+        <select id="filterStatus"><option value="">全部状态</option></select>
+        <button class="btn ghost sm" onclick="resetFilters()">重置</button>
+        <input type="text" id="search" placeholder="搜索..." style="flex:0 1 200px;">
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead><tr id="thead"></tr></thead>
+          <tbody id="tbody"></tbody>
+        </table>
+        <div class="pager">
+          <div id="pageInfo"></div>
+          <div class="pages" id="pages"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ===== 监控配置页 ===== -->
+    <div class="page" id="page-monitor">
+      <div class="header-row">
+        <h1>监控配置</h1>
+        <div class="actions">
+          <button class="btn ghost sm" onclick="loadDefaultConfig()">恢复默认</button>
+          <button class="btn sm" onclick="saveMonitorConfig()">保存配置</button>
+          <button class="btn success sm" onclick="exportMonitorConfig()">导出 config.json</button>
+        </div>
+      </div>
+      <div class="monitor-status-bar">
+        <div class="left">
+          <span><span class="pulse"></span> 监控状态</span>
+          <span>共 <strong id="totalCompanies">0</strong> 家</span>
+          <span style="color:var(--success);">● 启用 <strong id="runningCompanies">0</strong></span>
+          <span style="color:var(--text-3);">○ 暂停 <strong id="pausedCompanies">0</strong></span>
+        </div>
+        <div>
+          <button class="btn success sm" onclick="setAllMonitor(true)">全部开始</button>
+          <button class="btn ghost sm" onclick="setAllMonitor(false)">全部暂停</button>
+        </div>
+      </div>
+      <div class="help-tip warn">
+        ⚠️ <strong>监控机制</strong>：Selenium 无头浏览器 + ddddocr 自动识别验证码。每家公司查询间隔 30-60 秒，避免封IP。验证码识别失败会截图并暂停该公司。
+      </div>
+      <div class="section config-section">
+        <div class="section-title">📧 邮箱通知配置（SMTP）</div>
+        <div class="form-grid">
+          <div class="form-item"><label>SMTP 服务器</label><input type="text" id="cfg_smtp_host" placeholder="如 smtp.qiye.aliyun.com"></div>
+          <div class="form-item"><label>端口</label><input type="number" id="cfg_smtp_port" placeholder="465 或 587"></div>
+          <div class="form-item"><label>加密方式</label><select id="cfg_smtp_encrypt"><option value="ssl">SSL（465，推荐）</option><option value="tls">TLS（587）</option><option value="none">无加密</option></select></div>
+          <div class="form-item"><label>发件人名称</label><input type="text" id="cfg_smtp_from_name" placeholder="备案监控"></div>
+          <div class="form-item"><label>发件邮箱账号</label><input type="text" id="cfg_smtp_user" placeholder="发件邮箱地址"></div>
+          <div class="form-item"><label>邮箱授权码 <span style="color:var(--danger);">*</span></label><input type="password" id="cfg_smtp_password" placeholder="邮箱授权码（非登录密码）"></div>
+          <div class="form-item full"><label>收件邮箱（多个用英文逗号分隔）</label><input type="text" id="cfg_smtp_to" placeholder="如 a@xx.com, b@yy.com"></div>
+        </div>
+      </div>
+      <div class="section config-section">
+        <div class="section-title">🏢 监控公司名单（开关控制是否纳入查询）</div>
+        <div id="companyMonitorList"></div>
+        <button class="btn ghost sm" onclick="addCompany()" style="margin-top:6px;">+ 添加公司</button>
+      </div>
+      <div class="section config-section">
+        <div class="section-title">⏰ 监控时间点（每天定时执行）</div>
+        <div class="time-list" id="timeList"></div>
+        <div style="display:flex;gap:6px;align-items:center;">
+          <input type="time" id="newTime" value="12:00" style="width:80px;height:32px;border:1px solid var(--border);border-radius:5px;padding:0 6px;font-size:13px;">
+          <button class="btn ghost sm" onclick="addTime()">+ 添加时间</button>
+        </div>
+      </div>
+      <div class="section config-section">
+        <div class="section-title">💾 配置导入/导出</div>
+        <div style="display:flex;gap:6px;flex-wrap:wrap;">
+          <button class="btn sm" onclick="exportMonitorConfig()">⬇ 导出 config.json</button>
+          <button class="btn success sm" onclick="exportRecordsForMonitor()">⬇ 导出 records.json</button>
+          <button class="btn ghost sm" onclick="document.getElementById('importFile').click()">⬆ 导入配置</button>
+          <input type="file" id="importFile" accept=".json" style="display:none;" onchange="importMonitorConfig(event)">
+          <button class="btn warning sm" onclick="showTestMailCmd()">📨 测试邮件命令</button>
+        </div>
+        <div class="help-tip" style="margin-top:10px;margin-bottom:0;">
+          📋 <strong>records.json</strong>：包含当前所有小程序数据，供服务器每天早上检查"审核中超 8 天"并发提醒邮件。
+        </div>
+      </div>
+    </div>
+
+  </main>
+</div>
+
+<div class="modal-mask" id="editModal">
+  <div class="modal">
+    <div class="modal-head"><h3 id="modalTitle">新增记录</h3><span class="close" onclick="closeModal()">&times;</span></div>
+    <div class="modal-body"><div class="form-grid" id="formGrid"></div></div>
+    <div class="modal-foot"><button class="btn ghost sm" onclick="closeModal()">取消</button><button class="btn sm" onclick="saveRecord()">保存</button></div>
   </div>
 </div>
 
-<!-- 编辑模态框 -->
-<div class="modal-mask" id="editModal">
-  <div class="modal">
-    <div class="modal-head">
-      <h3 id="modalTitle">新增记录</h3>
-      <span class="close" onclick="closeModal()">&times;</span>
-    </div>
+<div class="modal-mask" id="cronModal">
+  <div class="modal" style="width:680px;">
+    <div class="modal-head"><h3 id="cronModalTitle">📋 命令</h3><span class="close" onclick="document.getElementById('cronModal').classList.remove('show')">&times;</span></div>
     <div class="modal-body">
-      <div class="form-grid" id="formGrid"></div>
+      <p style="margin-bottom:8px;font-size:12px;color:var(--text-3);" id="cronModalDesc"></p>
+      <textarea id="cronText" style="width:100%;height:280px;font-family:monospace;font-size:12px;padding:10px;border:1px solid var(--border);border-radius:5px;" readonly></textarea>
     </div>
-    <div class="modal-foot">
-      <button class="btn ghost sm" onclick="closeModal()">取消</button>
-      <button class="btn sm" onclick="saveRecord()">保存</button>
-    </div>
+    <div class="modal-foot"><button class="btn sm" onclick="copyCron()">复制全部</button><button class="btn ghost sm" onclick="document.getElementById('cronModal').classList.remove('show')">关闭</button></div>
   </div>
 </div>
 
@@ -181,66 +370,69 @@
 
 <script src="data.js"></script>
 <script>
-// ============ 配置 ============
-const ACCESS_PASSWORD = 'wudi2026'; // 登录密码，可自行修改
+const ACCESS_PASSWORD = 'wudi2026';
 const STORAGE_KEY = 'laingzizhiwang_local_records';
+const MONITOR_CONFIG_KEY = 'laingzizhiwang_monitor_config';
 const SESSION_KEY = 'laingzizhiwang_authed';
 
-// ============ 字段定义 ============
+const DEFAULT_MONITOR_CONFIG = {
+  smtp: { host: 'smtp.qiye.aliyun.com', port: 465, encrypt: 'ssl', from_name: '备案监控', user: '', password: '', to: [] },
+  companies: [
+    { name: '圣杰科技', enabled: true }, { name: '晟锋智联', enabled: true },
+    { name: '追影科技', enabled: true }, { name: '伴戏科技', enabled: true },
+    { name: '暖剧科技', enabled: true }, { name: '张家口乐强农业科技', enabled: true },
+    { name: '京宝芯联科技', enabled: true }, { name: '智承万兴科技', enabled: true },
+    { name: '文智化贤', enabled: true }
+  ],
+  times: ['11:00', '13:00', '15:00', '18:00', '20:00']
+};
+
 const COLS = [
-  { key: 'companyName', label: '公司名称', type: 'tag-company', sortable: true, form: { type: 'select', options: ['', '圣杰科技', '晟锋智联', '追影科技', '伴戏科技', '暖剧科技', '张家口乐强农业科技', '京宝芯联科技', '智承万兴科技', '文智化贤'] } },
-  { key: 'miniProgramName', label: '小程序名称', sortable: true, form: { type: 'text' } },
-  { key: 'appid', label: 'AppID', type: 'mono-copy', sortable: true, form: { type: 'text' } },
-  { key: 'status', label: '状态', type: 'status', sortable: true, form: { type: 'select', options: ['', '待审核', '审核中', '审核通过', '待注册', '已验收'] } },
+  { key: 'companyName', label: '公司', type: 'text', sortable: true, form: { type: 'select', options: ['', '圣杰科技', '晟锋智联', '追影科技', '伴戏科技', '暖剧科技', '张家口乐强农业科技', '京宝芯联科技', '智承万兴科技', '文智化贤'] } },
+  { key: 'miniProgramName', label: '小程序名称', type: 'copy', sortable: true, form: { type: 'text' } },
+  { key: 'appid', label: 'AppID', type: 'copy', sortable: true, form: { type: 'text' } },
+  { key: 'originalId', label: '原始ID', type: 'copy', form: { type: 'text' } },
+  { key: 'secret', label: '密钥', type: 'copy', form: { type: 'textarea' } },
   { key: 'admin', label: '管理员', sortable: true, form: { type: 'text' } },
+  { key: 'status', label: '状态', type: 'status', sortable: true, form: { type: 'select', options: ['', '待审核', '审核中', '审核通过', '待注册', '已验收'] } },
   { key: 'email', label: '邮箱', type: 'mono', form: { type: 'text' } },
-  { key: 'submitDate', label: '提交时间', type: 'date', sortable: true, form: { type: 'date' } },
-  { key: 'filingComplete', label: '备案完成', sortable: true, form: { type: 'text' } },
-  { key: 'originalId', label: '原始ID', type: 'mono', form: { type: 'text' } },
-  { key: 'miniProgramPassword', label: '小程序密码', type: 'secret', form: { type: 'text' } },
-  { key: 'emailPassword', label: '邮箱密码', type: 'secret', form: { type: 'text' } },
-  { key: 'secret', label: '密钥', type: 'secret', form: { type: 'textarea' } }
+  { key: 'miniProgramPassword', label: '小程序密码', type: 'copy', form: { type: 'text' } },
+  { key: 'submitDate', label: '提交时间', type: 'date', sortable: true, form: { type: 'date' } }
 ];
 const STATUS_LIST = ['待审核','审核中','审核通过','待注册','已验收'];
 const OP_COL = { key: '_op', label: '操作', type: 'op' };
+// 状态排序优先级：待注册 > 审核中 > 待审核 > 审核通过 > 已验收（后两个排最后）
+const STATUS_ORDER = { '待注册': 0, '审核中': 1, '待审核': 2, '审核通过': 3, '已验收': 4 };
+function getStatusOrder(s){ return STATUS_ORDER[s] != null ? STATUS_ORDER[s] : 99; }
 
 let sortKey = null, sortDesc = false, page = 1, pageSize = 20, editingId = null;
 
-// ============ 登录 ============
 function doLogin(){
-  const pwd = document.getElementById('loginPwd').value;
-  if (pwd === ACCESS_PASSWORD) {
-    sessionStorage.setItem(SESSION_KEY, '1');
-    document.getElementById('loginMask').style.display = 'none';
-    document.getElementById('app').style.display = 'block';
-    init();
-  } else {
-    document.getElementById('loginErr').textContent = '密码错误';
-    document.getElementById('loginPwd').value = '';
-  }
+  if (document.getElementById('loginPwd').value === ACCESS_PASSWORD) { sessionStorage.setItem(SESSION_KEY, '1'); showApp(); }
+  else { document.getElementById('loginErr').textContent = '密码错误'; document.getElementById('loginPwd').value = ''; }
 }
-function logout(){
-  sessionStorage.removeItem(SESSION_KEY);
-  location.reload();
-}
-function checkAuth(){
-  if (sessionStorage.getItem(SESSION_KEY) === '1') {
-    document.getElementById('loginMask').style.display = 'none';
-    document.getElementById('app').style.display = 'block';
-    init();
-  }
+function logout(){ sessionStorage.removeItem(SESSION_KEY); location.reload(); }
+function showApp(){ document.getElementById('loginMask').style.display = 'none'; document.getElementById('layout').style.display = 'flex'; init(); }
+function checkAuth(){ if (sessionStorage.getItem(SESSION_KEY) === '1') showApp(); }
+
+function switchPage(name){
+  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.nav-item').forEach(t => t.classList.remove('active'));
+  document.getElementById('page-' + name).classList.add('active');
+  document.querySelector('.nav-item[data-page="' + name + '"]').classList.add('active');
+  if (name === 'monitor') { loadMonitorConfigToForm(); updateMonitorStats(); }
+  if (name === 'dashboard') renderDashboard();
 }
 
-// ============ 本地数据管理 ============
-function getLocalRecords(){
-  try { return JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]'); } catch(e) { return []; }
+function toggleSidebar(){
+  document.getElementById('sidebar').classList.toggle('collapsed');
+  document.getElementById('main').classList.toggle('collapsed');
 }
-function setLocalRecords(arr){
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(arr));
-}
+
+function getLocalRecords(){ try { return JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]'); } catch(e) { return []; } }
+function setLocalRecords(arr){ localStorage.setItem(STORAGE_KEY, JSON.stringify(arr)); }
 function getAllRecords(){
   const local = getLocalRecords();
-  // 本地新增/修改覆盖原始记录（按 _localId 合并）；本地删除从结果排除
   const localMap = {};
   local.forEach(r => { localMap[r._localId] = r; });
   const merged = RECORDS.map(r => {
@@ -249,23 +441,30 @@ function getAllRecords(){
     if (local && local._type === 'edit') return Object.assign({}, r, local, { id: r.id });
     return r;
   }).filter(Boolean);
-  // 追加本地新增
-  local.filter(r => r._type === 'add').forEach(r => {
-    merged.push(Object.assign({}, r, { id: r._localId, _isLocal: true }));
-  });
+  local.filter(r => r._type === 'add').forEach(r => { merged.push(Object.assign({}, r, { id: r._localId })); });
   return merged;
 }
 
-// ============ 渲染 ============
 function esc(s){ if(s==null) return ''; return String(s).replace(/[&<>"']/g, c=>({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c])); }
+
+function copyText(text, el){
+  navigator.clipboard.writeText(text).then(() => {
+    const old = el.textContent, oldColor = el.style.color;
+    el.textContent = '✓ 已复制'; el.style.color = 'var(--success)';
+    setTimeout(() => { el.textContent = old; el.style.color = oldColor; }, 1000);
+  }).catch(() => {
+    const ta = document.createElement('textarea');
+    ta.value = text; document.body.appendChild(ta); ta.select();
+    try { document.execCommand('copy'); showToast('已复制', 'success'); } catch(e) {}
+    document.body.removeChild(ta);
+  });
+}
 
 function getFiltered(){
   const q = document.getElementById('search').value.trim().toLowerCase();
   const fc = document.getElementById('filterCompany').value;
   const fs = document.getElementById('filterStatus').value;
-  const onlyLocal = document.getElementById('onlyLocal').checked;
   let list = getAllRecords().filter(r => {
-    if (onlyLocal && !r._isLocal) return false;
     if (fc && r.companyName !== fc) return false;
     if (fs && r.status !== fs) return false;
     if (q) {
@@ -281,8 +480,24 @@ function getFiltered(){
       if (va > vb) return sortDesc ? -1 : 1;
       return 0;
     });
+  } else {
+    // 默认按状态优先级排序：审核通过 > 待注册 > 审核中 > 待审核 > 已验收
+    list.sort((a,b) => getStatusOrder(a.status) - getStatusOrder(b.status));
   }
   return list;
+}
+
+function calcExpectedThisWeek(all, now){
+  const day = now.getDay() || 7;
+  const weekStart = new Date(now); weekStart.setHours(0,0,0,0); weekStart.setDate(now.getDate() - day + 1);
+  const weekEnd = new Date(weekStart); weekEnd.setDate(weekStart.getDate() + 6); weekEnd.setHours(23,59,59,999);
+  return all.filter(r => {
+    if (r.status !== '审核中' || !r.submitDate) return false;
+    const submit = new Date(r.submitDate.split(' ')[0]);
+    if (isNaN(submit)) return false;
+    const expected = new Date(submit); expected.setDate(submit.getDate() + 8);
+    return expected >= weekStart && expected <= weekEnd;
+  });
 }
 
 function renderStats(){
@@ -291,14 +506,15 @@ function renderStats(){
   const byStatus = {};
   STATUS_LIST.forEach(s => byStatus[s] = 0);
   all.forEach(r => { if (r.status && byStatus.hasOwnProperty(r.status)) byStatus[r.status]++; });
-  const noStatus = all.filter(r => !r.status).length;
-  const localCount = all.filter(r => r._isLocal).length;
-  let html = `<div class="stat-card"><div class="num">${total}</div><div class="label">总记录数${localCount?` (本地${localCount})`:''}</div></div>`;
-  STATUS_LIST.forEach(s => {
-    html += `<div class="stat-card status-card"><div class="num">${byStatus[s]}</div><div class="label">${s}</div></div>`;
-  });
-  if (noStatus > 0) html += `<div class="stat-card status-card"><div class="num">${noStatus}</div><div class="label">未标记状态</div></div>`;
-  document.getElementById('stats').innerHTML = html;
+  const now = new Date();
+  const expectedThisWeek = calcExpectedThisWeek(all, now).length;
+  const statsEl = document.getElementById('stats');
+  if (statsEl) {
+    let html = `<div class="stat-card"><div class="num">${total}</div><div class="label">总记录</div></div>`;
+    html += `<div class="stat-card status-card" style="border-left:3px solid var(--warning);"><div class="num" style="color:var(--warning);">${expectedThisWeek}</div><div class="label">本周预计通过</div></div>`;
+    STATUS_LIST.forEach(s => { html += `<div class="stat-card status-card"><div class="num">${byStatus[s]}</div><div class="label">${s}</div></div>`; });
+    statsEl.innerHTML = html;
+  }
   document.getElementById('totalCount').textContent = total;
 }
 
@@ -310,6 +526,11 @@ function renderFilters(){
   selC.innerHTML = '<option value="">全部公司</option>';
   companies.forEach(c => { const o=document.createElement('option'); o.value=c; o.textContent=c; selC.appendChild(o); });
   selC.value = curC;
+  const selS = document.getElementById('filterStatus');
+  const curS = selS.value;
+  selS.innerHTML = '<option value="">全部状态</option>';
+  STATUS_LIST.forEach(s => { const o=document.createElement('option'); o.value=s; o.textContent=s; selS.appendChild(o); });
+  selS.value = curS;
 }
 
 function renderHead(){
@@ -317,20 +538,14 @@ function renderHead(){
   document.getElementById('thead').innerHTML = allCols.map(c => {
     if (c.type === 'op') return `<th class="op-col">${c.label}</th>`;
     const arrow = sortKey === c.key ? (sortDesc ? '▼' : '▲') : '';
-    return `<th onclick="toggleSort('${c.key}')">${c.label}<span class="arrow">${arrow}</span></th>`;
+    const widthClass = c.key === 'secret' ? 'col-secret' : (c.key === 'email' ? 'col-email' : '');
+    return `<th class="${widthClass}" onclick="toggleSort('${c.key}')">${c.label}<span class="arrow">${arrow}</span></th>`;
   }).join('');
 }
 
 function toggleSort(key){
   if (sortKey === key) { sortDesc = !sortDesc; } else { sortKey = key; sortDesc = false; }
   page = 1; renderBody(); renderHead();
-}
-
-function copyText(text, btn){
-  navigator.clipboard.writeText(text).then(() => {
-    const old = btn.textContent; btn.textContent = '已复制';
-    setTimeout(() => btn.textContent = old, 1000);
-  });
 }
 
 function renderBody(){
@@ -341,31 +556,29 @@ function renderBody(){
   const start = (page - 1) * pageSize;
   const pageList = list.slice(start, start + pageSize);
   const allCols = [...COLS, OP_COL];
-
   if (pageList.length === 0) {
     document.getElementById('tbody').innerHTML = '<tr class="empty"><td colspan="'+allCols.length+'">没有匹配的记录</td></tr>';
   } else {
     document.getElementById('tbody').innerHTML = pageList.map(r => {
-      const isLocal = r._isLocal;
-      return '<tr class="'+(isLocal?'local-row':'')+'">' + allCols.map(c => {
+      return '<tr>' + allCols.map(c => {
         if (c.type === 'op') {
           return '<td><div class="row-ops">' +
-            `<button class="icon-btn" onclick="openEdit('${esc(r.id)}')">编辑</button>` +
-            `<button class="icon-btn del" onclick="deleteRecord('${esc(r.id)}')">删除</button>` +
+            `<button class="icon-btn-sm" onclick="openEdit('${esc(r.id)}')">编辑</button>` +
+            `<button class="icon-btn-sm del" onclick="deleteRecord('${esc(r.id)}')">删除</button>` +
             '</div></td>';
         }
         const v = r[c.key];
         if (v == null || v === '') return '<td class="muted">—</td>';
-        if (c.type === 'tag-company') return `<td><span class="tag ${c.type}">${esc(v)}</span>${isLocal?'<span class="tag-local">本地</span>':''}</td>`;
         if (c.type === 'status') return `<td><span class="tag tag-status-${esc(v)}">${esc(v)}</span></td>`;
-        if (c.type === 'mono') return `<td class="mono">${esc(v)}</td>`;
-        if (c.type === 'mono-copy') return `<td class="mono">${esc(v)}<button class="copy-btn" onclick="copyText('${esc(v)}',this)">复制</button></td>`;
-        if (c.type === 'secret') return `<td><span class="secret" onclick="this.classList.toggle('show')"><span class="masked">••••••</span><span class="value">${esc(v)}</span></span> <button class="copy-btn" onclick="event.stopPropagation();copyText('${esc(v)}',this)">复制</button></td>`;
+        if (c.type === 'mono') return `<td class="mono col-narrow col-email" title="${esc(v)}">${esc(v)}</td>`;
+        if (c.type === 'copy') {
+          if (c.key === 'secret') return `<td class="mono copy-cell col-narrow col-secret" title="点击复制" onclick="copyText('${esc(v)}',this)">${esc(v)}</td>`;
+          return `<td class="mono copy-cell" title="点击复制" onclick="copyText('${esc(v)}',this)">${esc(v)}</td>`;
+        }
         return `<td>${esc(v)}</td>`;
       }).join('') + '</tr>';
     }).join('');
   }
-
   document.getElementById('pageInfo').textContent = `第 ${total === 0 ? 0 : start+1}-${Math.min(start+pageSize, total)} 条 / 共 ${total} 条`;
   let pagesHtml = `<button onclick="goPage(1)" ${page===1?'disabled':''}>首页</button>`;
   pagesHtml += `<button onclick="goPage(${page-1})" ${page===1?'disabled':''}>上一页</button>`;
@@ -378,16 +591,9 @@ function renderBody(){
 }
 
 function goPage(p){ page = p; renderBody(); }
-function resetFilters(){
-  document.getElementById('search').value = '';
-  document.getElementById('filterCompany').value = '';
-  document.getElementById('filterStatus').value = '';
-  document.getElementById('onlyLocal').checked = false;
-  sortKey = null; page = 1; render();
-}
-function render(){ renderStats(); renderFilters(); renderBody(); }
+function resetFilters(){ document.getElementById('search').value = ''; document.getElementById('filterCompany').value = ''; document.getElementById('filterStatus').value = ''; sortKey = null; page = 1; render(); }
+function render(){ renderStats(); renderFilters(); renderHead(); renderBody(); }
 
-// ============ 增删改 ============
 function openAdd(){
   editingId = null;
   document.getElementById('modalTitle').textContent = '新增记录';
@@ -397,15 +603,10 @@ function openAdd(){
     const fullWidth = (f.type === 'textarea') ? ' full' : '';
     let input;
     const today = new Date().toISOString().slice(0,10);
-    if (f.type === 'select') {
-      input = `<select id="f_${c.key}">${f.options.map(o => `<option value="${esc(o)}">${esc(o)||'(空)'}</option>`).join('')}</select>`;
-    } else if (f.type === 'date') {
-      input = `<input type="date" id="f_${c.key}" value="${today}">`;
-    } else if (f.type === 'textarea') {
-      input = `<textarea id="f_${c.key}"></textarea>`;
-    } else {
-      input = `<input type="text" id="f_${c.key}">`;
-    }
+    if (f.type === 'select') input = `<select id="f_${c.key}">${f.options.map(o => `<option value="${esc(o)}">${esc(o)||'(空)'}</option>`).join('')}</select>`;
+    else if (f.type === 'date') input = `<input type="date" id="f_${c.key}" value="${today}">`;
+    else if (f.type === 'textarea') input = `<textarea id="f_${c.key}"></textarea>`;
+    else input = `<input type="text" id="f_${c.key}">`;
     return `<div class="form-item${fullWidth}"><label>${c.label}</label>${input}</div>`;
   }).join('');
   document.getElementById('editModal').classList.add('show');
@@ -423,16 +624,10 @@ function openEdit(id){
     const val = r[c.key] || '';
     const fullWidth = (f.type === 'textarea') ? ' full' : '';
     let input;
-    if (f.type === 'select') {
-      input = `<select id="f_${c.key}">${f.options.map(o => `<option value="${esc(o)}" ${o===val?'selected':''}>${esc(o)||'(空)'}</option>`).join('')}</select>`;
-    } else if (f.type === 'date') {
-      const dv = val ? val.split(' ')[0] : '';
-      input = `<input type="date" id="f_${c.key}" value="${esc(dv)}">`;
-    } else if (f.type === 'textarea') {
-      input = `<textarea id="f_${c.key}">${esc(val)}</textarea>`;
-    } else {
-      input = `<input type="text" id="f_${c.key}" value="${esc(val)}">`;
-    }
+    if (f.type === 'select') input = `<select id="f_${c.key}">${f.options.map(o => `<option value="${esc(o)}" ${o===val?'selected':''}>${esc(o)||'(空)'}</option>`).join('')}</select>`;
+    else if (f.type === 'date') { const dv = val ? val.split(' ')[0] : ''; input = `<input type="date" id="f_${c.key}" value="${esc(dv)}">`; }
+    else if (f.type === 'textarea') input = `<textarea id="f_${c.key}">${esc(val)}</textarea>`;
+    else input = `<input type="text" id="f_${c.key}" value="${esc(val)}">`;
     return `<div class="form-item${fullWidth}"><label>${c.label}</label>${input}</div>`;
   }).join('');
   document.getElementById('editModal').classList.add('show');
@@ -442,84 +637,256 @@ function closeModal(){ document.getElementById('editModal').classList.remove('sh
 
 function saveRecord(){
   const data = { _localId: editingId || ('local_' + Date.now() + '_' + Math.random().toString(36).slice(2,8)) };
-  COLS.forEach(c => {
-    const el = document.getElementById('f_' + c.key);
-    if (el) data[c.key] = el.value.trim() || null;
-  });
+  COLS.forEach(c => { const el = document.getElementById('f_' + c.key); if (el) data[c.key] = el.value.trim() || null; });
+  // 状态改为审核通过/已验收时，清空提交时间
+  if (data.status === '审核通过' || data.status === '已验收') {
+    data.submitDate = null;
+  }
   const local = getLocalRecords();
   if (editingId) {
-    // 编辑：找到原始或已存在的本地记录
     const origIdx = local.findIndex(r => r._localId === editingId);
-    if (origIdx >= 0) {
-      // 已经是本地记录，直接更新
-      local[origIdx] = Object.assign({}, local[origIdx], data);
-    } else {
-      // 原始记录，标记为编辑
-      data._type = 'edit';
-      local.push(data);
-    }
+    if (origIdx >= 0) local[origIdx] = Object.assign({}, local[origIdx], data);
+    else { data._type = 'edit'; local.push(data); }
     showToast('已保存修改', 'success');
   } else {
-    // 新增
-    data._type = 'add';
-    local.push(data);
+    data._type = 'add'; local.push(data);
     showToast('已新增记录', 'success');
   }
-  setLocalRecords(local);
-  closeModal();
-  render();
+  setLocalRecords(local); closeModal(); render();
 }
 
 function deleteRecord(id){
   if (!confirm('确认删除该记录？')) return;
   const local = getLocalRecords();
   const existingIdx = local.findIndex(r => r._localId === id);
-  if (existingIdx >= 0 && local[existingIdx]._type === 'add') {
-    // 本地新增的记录，直接从本地删除
-    local.splice(existingIdx, 1);
-  } else {
-    // 原始记录，标记为删除
-    local.push({ _localId: id, _deleted: true });
-  }
-  setLocalRecords(local);
-  showToast('已删除', 'success');
-  render();
+  if (existingIdx >= 0 && local[existingIdx]._type === 'add') local.splice(existingIdx, 1);
+  else local.push({ _localId: id, _deleted: true });
+  setLocalRecords(local); showToast('已删除', 'success'); render();
 }
 
 function exportJSON(){
-  const all = getAllRecords().map(r => {
-    const clean = {};
-    COLS.forEach(c => { clean[c.key] = r[c.key]; });
-    return clean;
-  });
+  const all = getAllRecords().map(r => { const clean = {}; COLS.forEach(c => { clean[c.key] = r[c.key]; }); return clean; });
   const blob = new Blob([JSON.stringify(all, null, 2)], { type: 'application/json' });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
-  a.href = url;
-  a.download = 'records-' + new Date().toISOString().slice(0,10) + '.json';
-  a.click();
-  URL.revokeObjectURL(url);
-  showToast('已导出', 'success');
+  a.href = url; a.download = 'records-' + new Date().toISOString().slice(0,10) + '.json'; a.click();
+  URL.revokeObjectURL(url); showToast('已导出', 'success');
 }
 
-function showToast(msg, type){
-  const t = document.getElementById('toast');
-  t.textContent = msg;
-  t.className = 'toast show ' + (type || '');
-  setTimeout(() => t.className = 'toast', 2000);
+// ============ 首页看板 ============
+function renderDashboard(){
+  const all = getAllRecords();
+  const total = all.length;
+  const now = new Date();
+  document.getElementById('dashboardTime').textContent = now.toLocaleString('zh-CN', { year:'numeric', month:'2-digit', day:'2-digit', weekday:'long', hour:'2-digit', minute:'2-digit' });
+
+  const byStatus = {};
+  STATUS_LIST.forEach(s => byStatus[s] = 0);
+  all.forEach(r => { if (r.status && byStatus.hasOwnProperty(r.status)) byStatus[r.status]++; });
+  const weekExpected = calcExpectedThisWeek(all, now);
+
+  let statsHtml = `<div class="stat-card"><div class="num">${total}</div><div class="label">总记录</div></div>`;
+  statsHtml += `<div class="stat-card status-card" style="border-left:3px solid var(--warning);"><div class="num" style="color:var(--warning);">${weekExpected.length}</div><div class="label">本周预计通过</div></div>`;
+  STATUS_LIST.forEach(s => { statsHtml += `<div class="stat-card status-card"><div class="num">${byStatus[s]}</div><div class="label">${s}</div></div>`; });
+  document.getElementById('dashboardStats').innerHTML = statsHtml;
+
+  // 公司分布
+  const companyCount = {};
+  all.forEach(r => { const c = r.companyName || '(未填)'; companyCount[c] = (companyCount[c]||0)+1; });
+  const companyEntries = Object.entries(companyCount).sort((a,b) => b[1]-a[1]);
+  const maxCompany = Math.max(...companyEntries.map(e=>e[1]), 1);
+  document.getElementById('companyDist').innerHTML = companyEntries.map(([name, count]) => `
+    <div style="margin-bottom:8px;">
+      <div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:3px;"><span>${esc(name)}</span><span style="color:var(--text-3);">${count}</span></div>
+      <div style="height:6px;background:#f0f2f5;border-radius:3px;overflow:hidden;"><div style="height:100%;width:${count/maxCompany*100}%;background:var(--primary);border-radius:3px;"></div></div>
+    </div>`).join('') || '<div class="muted" style="font-size:12px;">暂无数据</div>';
+
+  // 状态分布
+  const statusColors = { '待审核':'#e6a23c', '审核中':'#409eff', '审核通过':'#67c23a', '待注册':'#f56c6c', '已验收':'#909399' };
+  let statusHtml = STATUS_LIST.map(s => {
+    const count = byStatus[s];
+    const pct = total ? (count/total*100).toFixed(1) : 0;
+    return `<div style="margin-bottom:8px;">
+      <div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:3px;"><span>${esc(s)}</span><span style="color:var(--text-3);">${count} (${pct}%)</span></div>
+      <div style="height:6px;background:#f0f2f5;border-radius:3px;overflow:hidden;"><div style="height:100%;width:${pct}%;background:${statusColors[s]};border-radius:3px;"></div></div>
+    </div>`;
+  }).join('');
+  document.getElementById('statusDist').innerHTML = statusHtml || '<div class="muted" style="font-size:12px;">暂无数据</div>';
+
+  // 本周预计审核通过明细
+  const sortedWeek = weekExpected.sort((a,b) => new Date(a.submitDate) - new Date(b.submitDate));
+  document.getElementById('expectedWeek').innerHTML = sortedWeek.length ? sortedWeek.map(r => {
+    const submit = new Date(r.submitDate.split(' ')[0]);
+    const expected = new Date(submit); expected.setDate(submit.getDate() + 8);
+    const days = Math.floor((now - submit) / 86400000);
+    return `<div style="display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid #f0f2f5;font-size:12px;">
+      <div><div style="font-weight:500;">${esc(r.miniProgramName||'(未命名)')}</div><div style="color:var(--text-3);font-size:11px;">${esc(r.companyName||'')} · 提交 ${esc(r.submitDate||'')}</div></div>
+      <div style="text-align:right;"><div style="color:var(--warning);font-weight:600;">${days}天</div><div style="color:var(--success);font-size:11px;">预计 ${expected.toLocaleDateString('zh-CN')}</div></div>
+    </div>`;
+  }).join('') : '<div class="muted" style="font-size:12px;">本周无预计审核通过项</div>';
+
+  // 待处理事项
+  const todos = [];
+  const pendingReview = all.filter(r => r.status === '待审核').length;
+  const overdue = all.filter(r => { if (r.status !== '审核中' || !r.submitDate) return false; const s = new Date(r.submitDate.split(' ')[0]); return !isNaN(s) && (now - s) / 86400000 >= 8; }).length;
+  const pendingRegister = all.filter(r => r.status === '待注册').length;
+  if (pendingReview > 0) todos.push({ icon:'📝', text:`待审核 ${pendingReview} 个`, color:'var(--warning)' });
+  if (overdue > 0) todos.push({ icon:'⏰', text:`审核中超 8 天 ${overdue} 个`, color:'var(--danger)' });
+  if (pendingRegister > 0) todos.push({ icon:'🔐', text:`待注册 ${pendingRegister} 个`, color:'var(--primary)' });
+  document.getElementById('todoItems').innerHTML = todos.length ? todos.map(t => `<div style="display:flex;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid #f0f2f5;font-size:12px;"><span style="font-size:16px;">${t.icon}</span><span style="color:${t.color};">${esc(t.text)}</span></div>`).join('') : '<div class="muted" style="font-size:12px;">✓ 暂无待处理事项</div>';
+
+  // 最近提交
+  const recent = all.filter(r => r.submitDate).sort((a,b) => new Date(b.submitDate) - new Date(a.submitDate)).slice(0, 10);
+  document.getElementById('recentList').innerHTML = recent.length ? recent.map(r => `<tr><td>${esc(r.companyName||'')}</td><td>${esc(r.miniProgramName||'')}</td><td>${r.status ? `<span class="tag tag-status-${esc(r.status)}">${esc(r.status)}</span>` : '<span class="muted">—</span>'}</td><td class="mono">${esc(r.submitDate||'')}</td></tr>`).join('') : '<tr class="empty"><td colspan="4">暂无记录</td></tr>';
 }
 
-function init(){
-  renderStats();
-  renderFilters();
-  renderHead();
-  renderBody();
+// ============ 监控配置 ============
+function getMonitorConfig(){ try { return JSON.parse(localStorage.getItem(MONITOR_CONFIG_KEY) || 'null') || JSON.parse(JSON.stringify(DEFAULT_MONITOR_CONFIG)); } catch(e) { return JSON.parse(JSON.stringify(DEFAULT_MONITOR_CONFIG)); } }
+function setMonitorConfig(cfg){ localStorage.setItem(MONITOR_CONFIG_KEY, JSON.stringify(cfg)); }
+
+function loadMonitorConfigToForm(){
+  const cfg = getMonitorConfig();
+  document.getElementById('cfg_smtp_host').value = cfg.smtp.host || '';
+  document.getElementById('cfg_smtp_port').value = cfg.smtp.port || 465;
+  document.getElementById('cfg_smtp_encrypt').value = cfg.smtp.encrypt || 'ssl';
+  document.getElementById('cfg_smtp_from_name').value = cfg.smtp.from_name || '备案监控';
+  document.getElementById('cfg_smtp_user').value = cfg.smtp.user || '';
+  document.getElementById('cfg_smtp_password').value = cfg.smtp.password || '';
+  document.getElementById('cfg_smtp_to').value = (cfg.smtp.to || []).join(', ');
+  renderCompanyMonitorList(cfg.companies || []);
+  renderTimeList(cfg.times || []);
+  updateMonitorStats();
 }
+
+function renderCompanyMonitorList(companies){
+  document.getElementById('companyMonitorList').innerHTML = companies.map((c, i) => `
+    <div class="company-monitor-row">
+      <input type="text" value="${esc(c.name)}" data-idx="${i}" onchange="updateCompanyName(${i}, this.value)" style="flex:1;height:32px;border:1px solid var(--border);border-radius:5px;padding:0 10px;font-size:13px;">
+      <span class="status-text ${c.enabled ? 'running' : ''}" id="company-status-${i}">${c.enabled ? '● 监控中' : '○ 已暂停'}</span>
+      <label class="switch"><input type="checkbox" ${c.enabled ? 'checked' : ''} onchange="toggleCompanyMonitor(${i}, this.checked)"><span class="slider"></span></label>
+      <button class="icon-btn-sm del" onclick="removeCompany(${i})">删除</button>
+    </div>`).join('');
+}
+
+function toggleCompanyMonitor(idx, enabled){
+  const cfg = getMonitorConfig();
+  if (!cfg.companies[idx]) return;
+  cfg.companies[idx].enabled = enabled;
+  setMonitorConfig(cfg);
+  const el = document.getElementById('company-status-' + idx);
+  if (el) { el.textContent = enabled ? '● 监控中' : '○ 已暂停'; el.className = 'status-text ' + (enabled ? 'running' : ''); }
+  updateMonitorStats();
+  showToast(enabled ? '已开启监控' : '已暂停监控', 'success');
+}
+
+function updateCompanyName(idx, name){ const cfg = getMonitorConfig(); if (cfg.companies[idx]) { cfg.companies[idx].name = name.trim(); setMonitorConfig(cfg); } }
+function setAllMonitor(enabled){ const cfg = getMonitorConfig(); cfg.companies.forEach(c => c.enabled = enabled); setMonitorConfig(cfg); renderCompanyMonitorList(cfg.companies); updateMonitorStats(); showToast(enabled ? '已全部开启' : '已全部暂停', 'success'); }
+function updateMonitorStats(){ const cfg = getMonitorConfig(); const total = cfg.companies.length; const running = cfg.companies.filter(c => c.enabled).length; document.getElementById('totalCompanies').textContent = total; document.getElementById('runningCompanies').textContent = running; document.getElementById('pausedCompanies').textContent = total - running; }
+function addCompany(){ const cfg = getMonitorConfig(); cfg.companies.push({ name: '', enabled: true }); setMonitorConfig(cfg); renderCompanyMonitorList(cfg.companies); updateMonitorStats(); }
+function removeCompany(idx){ if (!confirm('确认删除该公司？')) return; const cfg = getMonitorConfig(); cfg.companies.splice(idx, 1); setMonitorConfig(cfg); renderCompanyMonitorList(cfg.companies); updateMonitorStats(); }
+
+function renderTimeList(times){
+  document.getElementById('timeList').innerHTML = times.map((t, i) => `<div class="time-item"><span>⏰ ${esc(t)}</span><span class="remove" onclick="removeTime(${i})">×</span></div>`).join('');
+}
+function addTime(){ const t = document.getElementById('newTime').value; if (!t) { showToast('请选择时间', 'error'); return; } const cfg = getMonitorConfig(); if (cfg.times.includes(t)) { showToast('该时间已存在', 'error'); return; } cfg.times.push(t); cfg.times.sort(); setMonitorConfig(cfg); renderTimeList(cfg.times); document.getElementById('newTime').value = '12:00'; }
+function removeTime(idx){ const cfg = getMonitorConfig(); cfg.times.splice(idx, 1); setMonitorConfig(cfg); renderTimeList(cfg.times); }
+
+function saveMonitorConfig(){
+  const cfg = { smtp: { host: document.getElementById('cfg_smtp_host').value.trim(), port: parseInt(document.getElementById('cfg_smtp_port').value) || 465, encrypt: document.getElementById('cfg_smtp_encrypt').value, from_name: document.getElementById('cfg_smtp_from_name').value.trim() || '备案监控', user: document.getElementById('cfg_smtp_user').value.trim(), password: document.getElementById('cfg_smtp_password').value.trim(), to: document.getElementById('cfg_smtp_to').value.split(',').map(s => s.trim()).filter(Boolean) }, companies: [], times: getMonitorConfig().times || [] };
+  document.querySelectorAll('#companyMonitorList input[type=text]').forEach(inp => { const v = inp.value.trim(); const idx = parseInt(inp.dataset.idx); const enabled = getMonitorConfig().companies[idx] ? getMonitorConfig().companies[idx].enabled : true; if (v) cfg.companies.push({ name: v, enabled: enabled }); });
+  if (!cfg.smtp.user || !cfg.smtp.password) { showToast('请填写发件邮箱和授权码', 'error'); return; }
+  if (cfg.smtp.to.length === 0) { showToast('请填写至少一个收件邮箱', 'error'); return; }
+  if (cfg.companies.length === 0) { showToast('请添加至少一个监控公司', 'error'); return; }
+  setMonitorConfig(cfg); showToast('配置已保存', 'success');
+}
+
+function loadDefaultConfig(){ if (!confirm('恢复默认配置？')) return; localStorage.removeItem(MONITOR_CONFIG_KEY); loadMonitorConfigToForm(); showToast('已恢复默认', 'success'); }
+
+function buildConfigJSON(){
+  const cfg = getMonitorConfig();
+  return { _说明: "小程序备案监控配置", smtp: { host: cfg.smtp.host, port: cfg.smtp.port, use_ssl: cfg.smtp.encrypt === 'ssl', use_tls: cfg.smtp.encrypt === 'tls', user: cfg.smtp.user, password: cfg.smtp.password, from_name: cfg.smtp.from_name, to: cfg.smtp.to }, companies: cfg.companies.map(c => ({ name: c.name, enabled: c.enabled })), times: cfg.times };
+}
+
+function exportMonitorConfig(){
+  saveMonitorConfig();
+  const blob = new Blob([JSON.stringify(buildConfigJSON(), null, 2)], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a'); a.href = url; a.download = 'config.json'; a.click();
+  URL.revokeObjectURL(url); showToast('config.json 已导出', 'success'); showCronCommand();
+}
+
+function showCronCommand(){
+  const cfg = getMonitorConfig();
+  const times = cfg.times || [];
+  const lines = times.map(t => { const [h, m] = t.split(':'); return `${parseInt(m)} ${parseInt(h)} * * * /usr/bin/python3 /www/filing-monitor/monitor.py >> /www/filing-monitor/cron.log 2>&1`; });
+  lines.push(`# 每天早上 9:00 检查预计审核通过`);
+  lines.push(`0 9 * * * /usr/bin/python3 /www/filing-monitor/monitor.py --check-expected >> /www/filing-monitor/cron.log 2>&1`);
+  const text = `# 小程序备案监控 - 每天 ${times.length} 次 + 1 次预计审核提醒\n# 在服务器执行 crontab -e 后粘贴\n\n` + lines.join('\n');
+  document.getElementById('cronModalTitle').textContent = '📋 Cron 定时任务命令';
+  document.getElementById('cronModalDesc').textContent = '在服务器执行 crontab -e 后粘贴以下内容：';
+  document.getElementById('cronText').value = text;
+  document.getElementById('cronModal').classList.add('show');
+}
+
+function copyCron(){ const t = document.getElementById('cronText'); t.select(); navigator.clipboard.writeText(t.value).then(() => showToast('已复制', 'success')); }
+
+function exportRecordsForMonitor(){
+  const all = getAllRecords().map(r => { const clean = {}; COLS.forEach(c => { clean[c.key] = r[c.key]; }); return clean; });
+  const blob = new Blob([JSON.stringify(all, null, 2)], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a'); a.href = url; a.download = 'records.json'; a.click();
+  URL.revokeObjectURL(url); showToast('records.json 已导出', 'success');
+}
+
+function importMonitorConfig(event){
+  const file = event.target.files[0]; if (!file) return;
+  const reader = new FileReader();
+  reader.onload = e => {
+    try {
+      const imported = JSON.parse(e.target.result);
+      const companies = (imported.companies || []).map(c => typeof c === 'string' ? { name: c, enabled: true } : { name: c.name, enabled: c.enabled !== false });
+      const cfg = { smtp: { host: imported.smtp.host, port: imported.smtp.port || 465, encrypt: imported.smtp.use_ssl ? 'ssl' : (imported.smtp.use_tls ? 'tls' : 'none'), from_name: imported.smtp.from_name || '备案监控', user: imported.smtp.user || '', password: imported.smtp.password || '', to: imported.smtp.to || [] }, companies: companies, times: imported.times || ['11:00', '13:00', '15:00', '18:00', '20:00'] };
+      setMonitorConfig(cfg); loadMonitorConfigToForm(); showToast('配置已导入', 'success');
+    } catch(err) { showToast('配置文件格式错误', 'error'); }
+  };
+  reader.readAsText(file); event.target.value = '';
+}
+
+function showTestMailCmd(){
+  const cmd = `# 在服务器执行测试邮件发送:
+cd /www/filing-monitor
+python3 -c "
+import smtplib, json
+from email.mime.text import MIMEText
+cfg = json.load(open('config.json'))['smtp']
+msg = MIMEText('测试邮件', 'plain', 'utf-8')
+msg['Subject'] = '【备案监控】测试'
+msg['From'] = cfg['user']; msg['To'] = ','.join(cfg['to'])
+server = smtplib.SMTP_SSL(cfg['host'], cfg['port']) if cfg.get('use_ssl') else smtplib.SMTP(cfg['host'], cfg['port'])
+if cfg.get('use_tls'): server.starttls()
+server.login(cfg['user'], cfg['password']); server.sendmail(cfg['user'], cfg['to'], msg.as_string()); server.quit()
+print('邮件已发送')
+"`;
+  document.getElementById('cronModalTitle').textContent = '📨 测试邮件命令';
+  document.getElementById('cronModalDesc').textContent = '在服务器执行以下命令验证邮箱配置：';
+  document.getElementById('cronText').value = cmd;
+  document.getElementById('cronModal').classList.add('show');
+}
+
+function showToast(msg, type){ const t = document.getElementById('toast'); t.textContent = msg; t.className = 'toast show ' + (type || ''); setTimeout(() => t.className = 'toast', 2000); }
+
+function init(){ renderStats(); renderFilters(); renderHead(); renderBody(); loadMonitorConfigToForm(); renderDashboard(); }
 
 document.getElementById('search').addEventListener('input', () => { page = 1; renderBody(); });
 document.getElementById('filterCompany').addEventListener('change', () => { page = 1; renderBody(); });
 document.getElementById('filterStatus').addEventListener('change', () => { page = 1; renderBody(); });
-document.getElementById('onlyLocal').addEventListener('change', () => { page = 1; renderBody(); });
+document.getElementById('editModal').addEventListener('change', function(e) {
+  if (e.target.id === 'f_status' && e.target.value === '审核中') {
+    const today = new Date().toISOString().slice(0, 10);
+    const dateInput = document.getElementById('f_submitDate');
+    if (dateInput) dateInput.value = today;
+  }
+});
 
 checkAuth();
 </script>
