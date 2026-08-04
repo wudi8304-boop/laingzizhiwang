@@ -506,16 +506,27 @@ function getAllRecords(){
 function esc(s){ if(s==null) return ''; return String(s).replace(/[&<>"']/g, c=>({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c])); }
 
 function copyText(text, el){
-  navigator.clipboard.writeText(text).then(() => {
+  clipWrite(text, function(){
     const old = el.textContent, oldColor = el.style.color;
     el.textContent = '✓ 已复制'; el.style.color = 'var(--success)';
     setTimeout(() => { el.textContent = old; el.style.color = oldColor; }, 1000);
-  }).catch(() => {
-    const ta = document.createElement('textarea');
-    ta.value = text; document.body.appendChild(ta); ta.select();
-    try { document.execCommand('copy'); showToast('已复制', 'success'); } catch(e) {}
-    document.body.removeChild(ta);
   });
+}
+
+// 健壮的剪贴板写入（兼容HTTP/HTTPS）
+function clipWrite(text, onOk){
+  if (navigator.clipboard && typeof navigator.clipboard.writeText === 'function') {
+    navigator.clipboard.writeText(text).then(() => { if(onOk) onOk(); }).catch(function(){ clipWriteFallback(text, onOk); });
+  } else {
+    clipWriteFallback(text, onOk);
+  }
+}
+function clipWriteFallback(text, onOk){
+  var ta = document.createElement('textarea');
+  ta.value = text; ta.style.cssText = 'position:fixed;left:-9999px;top:-9999px;';
+  document.body.appendChild(ta); ta.select();
+  try { document.execCommand('copy'); if(onOk) onOk(); } catch(e) { showToast('复制失败', 'error'); }
+  document.body.removeChild(ta);
 }
 
 // 复制整列数据（跨页，按当前筛选条件取全部记录）
@@ -524,15 +535,10 @@ function copyColumn(key, el){
   const values = list.map(r => r[key] != null ? String(r[key]) : '').filter(v => v !== '');
   if (values.length === 0) { showToast('该列无数据', 'error'); return; }
   const text = values.join('\n');
-  navigator.clipboard.writeText(text).then(() => {
+  clipWrite(text, function(){
     el.classList.add('copied'); el.textContent = '✓';
     showToast(`已复制 ${values.length} 条${COLS.find(c=>c.key===key)?.label || ''}`, 'success');
     setTimeout(() => { el.classList.remove('copied'); el.textContent = '⎘'; }, 1200);
-  }).catch(() => {
-    const ta = document.createElement('textarea');
-    ta.value = text; document.body.appendChild(ta); ta.select();
-    try { document.execCommand('copy'); showToast(`已复制 ${values.length} 条`, 'success'); } catch(e) { showToast('复制失败', 'error'); }
-    document.body.removeChild(ta);
   });
 }
 
@@ -623,25 +629,20 @@ function copySelectedCells(){
     const record = currentPageList[r];
     for (let c = minC; c <= maxC; c++) {
       if (selectedCells.has(r + '-' + c)) {
-        const col = COLS[c]; // 数据列索引对应COLS
-        if (col) {
-          const v = record ? record[col.key] : '';
+        const col = COLS[c];
+        if (col && record) {
+          const v = record[col.key];
           row.push(v != null ? String(v) : '');
         } else { row.push(''); }
       } else {
-        row.push(''); // 未选中的位置留空
+        row.push('');
       }
     }
     lines.push(row.join('\t'));
   }
   const text = lines.join('\n');
-  navigator.clipboard.writeText(text).then(() => {
-    showToast(`已复制 ${selectedCells.size} 个单元格`, 'success');
-  }).catch(() => {
-    const ta = document.createElement('textarea');
-    ta.value = text; document.body.appendChild(ta); ta.select();
-    try { document.execCommand('copy'); showToast(`已复制 ${selectedCells.size} 个单元格`, 'success'); } catch(e) { showToast('复制失败', 'error'); }
-    document.body.removeChild(ta);
+  clipWrite(text, function(){
+    showToast(`已复制 ${selectedCells.size} 个单元格（可粘贴到Excel）`, 'success');
   });
 }
 
