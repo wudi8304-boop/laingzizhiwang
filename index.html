@@ -88,11 +88,11 @@
   td { padding: 9px 10px; border-bottom: 1px solid #f0f2f5; vertical-align: middle; }
   tr:hover { background: #f9fafc; }
   tr.empty td { text-align: center; color: var(--text-3); padding: 30px; }
-  /* 表格单元格原生选择模式（支持鼠标拖选多单元格复制） */
-  #page-data td, #page-data th { user-select: text; -webkit-user-select: text; }
-  #page-data .copy-cell { cursor: text; }
-  #page-data .copy-cell:hover { background: transparent; color: inherit; }
-  #page-data .mono { word-break: break-all; }
+  /* 小程序备案数据表格：单元格原生选择模式（支持鼠标拖选多单元格复制） */
+  #page-data td, #page-data th { user-select: text !important; -webkit-user-select: text !important; }
+  #page-data .table-wrap { overflow: visible; }
+  #page-data td.mono { white-space: normal !important; word-break: break-all; overflow: visible !important; text-overflow: clip !important; max-width: none !important; }
+  #page-data .col-narrow, #page-data .col-secret, #page-data .col-email { max-width: none !important; overflow: visible !important; white-space: normal !important; text-overflow: clip !important; }
 
   .tag { display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: 11px; font-weight: 500; }
   .tag-status-待审核 { background: #fdf6ec; color: #e6a23c; border: 1px solid #faecd8; }
