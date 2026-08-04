@@ -520,6 +520,14 @@ function copyColumn(key, el){
   });
 }
 
+// 复制单个单元格（从内存数据取值，避免特殊字符转义问题）
+function copyCellAt(idx, key, el){
+  const r = currentPageList[idx];
+  if (!r) return;
+  const v = r[key] != null ? String(r[key]) : '';
+  copyText(v, el);
+}
+
 function getFiltered(){
   const q = document.getElementById('search').value.trim().toLowerCase();
   const fc = document.getElementById('filterCompany').value;
@@ -608,6 +616,7 @@ function toggleSort(key){
   page = 1; renderBody(); renderHead();
 }
 
+let currentPageList = []; // 当前页数据，供单元格复制取值用
 function renderBody(){
   const list = getFiltered();
   const total = list.length;
@@ -615,11 +624,12 @@ function renderBody(){
   if (page > totalPages) page = totalPages;
   const start = (page - 1) * pageSize;
   const pageList = list.slice(start, start + pageSize);
+  currentPageList = pageList;
   const allCols = [...COLS, OP_COL];
   if (pageList.length === 0) {
     document.getElementById('tbody').innerHTML = '<tr class="empty"><td colspan="'+allCols.length+'">没有匹配的记录</td></tr>';
   } else {
-    document.getElementById('tbody').innerHTML = pageList.map(r => {
+    document.getElementById('tbody').innerHTML = pageList.map((r, idx) => {
       return '<tr>' + allCols.map(c => {
         if (c.type === 'op') {
           return '<td><div class="row-ops">' +
@@ -630,10 +640,9 @@ function renderBody(){
         const v = r[c.key];
         if (v == null || v === '') return '<td class="muted">—</td>';
         if (c.type === 'status') return `<td><span class="tag tag-status-${esc(v)}">${esc(v)}</span></td>`;
-        if (c.type === 'mono') return `<td class="mono col-narrow col-email" title="${esc(v)}">${esc(v)}</td>`;
-        if (c.type === 'copy') {
-          if (c.key === 'secret') return `<td class="mono copy-cell col-narrow col-secret" title="点击复制" onclick="copyText('${esc(v)}',this)">${esc(v)}</td>`;
-          return `<td class="mono copy-cell" title="点击复制" onclick="copyText('${esc(v)}',this)">${esc(v)}</td>`;
+        if (c.type === 'mono' || c.type === 'copy') {
+          const widthClass = c.key === 'secret' ? 'col-narrow col-secret' : (c.key === 'email' ? 'col-narrow col-email' : '');
+          return `<td class="mono copy-cell ${widthClass}" title="点击复制" onclick="copyCellAt(${idx},'${c.key}',this)">${esc(v)}</td>`;
         }
         return `<td>${esc(v)}</td>`;
       }).join('') + '</tr>';
