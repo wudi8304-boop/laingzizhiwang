@@ -82,6 +82,9 @@
   th .arrow { font-size: 10px; color: var(--text-3); margin-left: 3px; }
   th.op-col { cursor: default; }
   th.op-col:hover { background: #fafafa; }
+  th .col-copy { display: inline-block; width: 14px; height: 14px; margin-left: 4px; line-height: 14px; text-align: center; font-size: 10px; color: var(--text-3); border: 1px solid var(--border); border-radius: 3px; cursor: pointer; vertical-align: middle; opacity: .5; transition: all .15s; }
+  th .col-copy:hover { opacity: 1; color: var(--primary); border-color: var(--primary); background: #ecf5ff; }
+  th .col-copy.copied { color: var(--success); border-color: var(--success); opacity: 1; }
   td { padding: 9px 10px; border-bottom: 1px solid #f0f2f5; vertical-align: middle; }
   tr:hover { background: #f9fafc; }
   tr.empty td { text-align: center; color: var(--text-3); padding: 30px; }
@@ -499,6 +502,24 @@ function copyText(text, el){
   });
 }
 
+// 复制整列数据（跨页，按当前筛选条件取全部记录）
+function copyColumn(key, el){
+  const list = getFiltered();
+  const values = list.map(r => r[key] != null ? String(r[key]) : '').filter(v => v !== '');
+  if (values.length === 0) { showToast('该列无数据', 'error'); return; }
+  const text = values.join('\n');
+  navigator.clipboard.writeText(text).then(() => {
+    el.classList.add('copied'); el.textContent = '✓';
+    showToast(`已复制 ${values.length} 条${COLS.find(c=>c.key===key)?.label || ''}`, 'success');
+    setTimeout(() => { el.classList.remove('copied'); el.textContent = '⎘'; }, 1200);
+  }).catch(() => {
+    const ta = document.createElement('textarea');
+    ta.value = text; document.body.appendChild(ta); ta.select();
+    try { document.execCommand('copy'); showToast(`已复制 ${values.length} 条`, 'success'); } catch(e) { showToast('复制失败', 'error'); }
+    document.body.removeChild(ta);
+  });
+}
+
 function getFiltered(){
   const q = document.getElementById('search').value.trim().toLowerCase();
   const fc = document.getElementById('filterCompany').value;
@@ -578,7 +599,7 @@ function renderHead(){
     if (c.type === 'op') return `<th class="op-col">${c.label}</th>`;
     const arrow = sortKey === c.key ? (sortDesc ? '▼' : '▲') : '';
     const widthClass = c.key === 'secret' ? 'col-secret' : (c.key === 'email' ? 'col-email' : '');
-    return `<th class="${widthClass}" onclick="toggleSort('${c.key}')">${c.label}<span class="arrow">${arrow}</span></th>`;
+    return `<th class="${widthClass}" onclick="toggleSort('${c.key}')">${c.label}<span class="arrow">${arrow}</span><span class="col-copy" title="复制本列" onclick="event.stopPropagation();copyColumn('${c.key}',this)">⎘</span></th>`;
   }).join('');
 }
 
