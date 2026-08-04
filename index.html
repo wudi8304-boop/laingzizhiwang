@@ -88,6 +88,11 @@
   td { padding: 9px 10px; border-bottom: 1px solid #f0f2f5; vertical-align: middle; }
   tr:hover { background: #f9fafc; }
   tr.empty td { text-align: center; color: var(--text-3); padding: 30px; }
+  /* 表格单元格原生选择模式（支持鼠标拖选多单元格复制） */
+  #page-data td, #page-data th { user-select: text; -webkit-user-select: text; }
+  #page-data .copy-cell { cursor: text; }
+  #page-data .copy-cell:hover { background: transparent; color: inherit; }
+  #page-data .mono { word-break: break-all; }
 
   .tag { display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: 11px; font-weight: 500; }
   .tag-status-待审核 { background: #fdf6ec; color: #e6a23c; border: 1px solid #faecd8; }
@@ -642,7 +647,7 @@ function renderBody(){
         if (c.type === 'status') return `<td><span class="tag tag-status-${esc(v)}">${esc(v)}</span></td>`;
         if (c.type === 'mono' || c.type === 'copy') {
           const widthClass = c.key === 'secret' ? 'col-narrow col-secret' : (c.key === 'email' ? 'col-narrow col-email' : '');
-          return `<td class="mono copy-cell ${widthClass}" title="点击复制" onclick="copyCellAt(${idx},'${c.key}',this)">${esc(v)}</td>`;
+          return `<td class="mono ${widthClass}">${esc(v)}</td>`;
         }
         return `<td>${esc(v)}</td>`;
       }).join('') + '</tr>';
