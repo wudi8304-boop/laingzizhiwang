@@ -88,11 +88,15 @@
   td { padding: 9px 10px; border-bottom: 1px solid #f0f2f5; vertical-align: middle; }
   tr:hover { background: #f9fafc; }
   tr.empty td { text-align: center; color: var(--text-3); padding: 30px; }
-  /* 小程序备案数据表格：单元格原生选择模式（支持鼠标拖选多单元格复制） */
-  #page-data td, #page-data th { user-select: text !important; -webkit-user-select: text !important; }
-  #page-data .table-wrap { overflow: visible; }
-  #page-data td.mono { white-space: normal !important; word-break: break-all; overflow: visible !important; text-overflow: clip !important; max-width: none !important; }
-  #page-data .col-narrow, #page-data .col-secret, #page-data .col-email { max-width: none !important; overflow: visible !important; white-space: normal !important; text-overflow: clip !important; }
+  /* 小程序备案数据表格：Excel式单元格选择模式 */
+  #page-data td.cell { cursor: pointer; position: relative; user-select: none; -webkit-user-select: none; }
+  #page-data td.cell:hover { background: #ecf5ff !important; }
+  #page-data td.cell.selected { background: #d9ecff !important; outline: 2px solid var(--primary); outline-offset: -2px; }
+  #page-data td.cell.selected.anchor { outline: 2px solid var(--primary); }
+  #page-data .sel-bar { display: flex; align-items: center; gap: 8px; background: var(--card); border-radius: 8px; padding: 8px 12px; box-shadow: var(--shadow); margin-bottom: 8px; font-size: 12px; color: var(--text-2); }
+  #page-data .sel-bar .sel-count { color: var(--primary); font-weight: 600; }
+  #page-data .sel-bar .btn { height: 26px; font-size: 11px; padding: 0 8px; }
+  #page-data .mono { word-break: break-all; }
 
   .tag { display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: 11px; font-weight: 500; }
   .tag-status-待审核 { background: #fdf6ec; color: #e6a23c; border: 1px solid #faecd8; }
@@ -277,6 +281,13 @@
         <select id="filterStatus"><option value="">全部状态</option></select>
         <button class="btn ghost sm" onclick="resetFilters()">重置</button>
         <input type="text" id="search" placeholder="搜索..." style="flex:0 1 200px;">
+      </div>
+      <div class="sel-bar" id="selBar" style="display:none;">
+        <span>已选 <span class="sel-count" id="selCount">0</span> 个单元格</span>
+        <button class="btn sm" onclick="copySelectedCells()">📋 复制选中</button>
+        <button class="btn ghost sm" onclick="selectEntireTable()">全选当前页</button>
+        <button class="btn ghost sm" onclick="clearCellSelection()">清除选择</button>
+        <span style="color:var(--text-3);">提示：点击选单元格，Ctrl+点击多选，Shift+点击范围选</span>
       </div>
       <div class="table-wrap">
         <table>
@@ -533,6 +544,107 @@ function copyCellAt(idx, key, el){
   copyText(v, el);
 }
 
+// ============ Excel式单元格选择 ============
+function cellClick(e, rowIdx, colIdx){
+  e.preventDefault();
+  const key = rowIdx + '-' + colIdx;
+  if (e.shiftKey && anchorCell) {
+    // Shift范围选：从anchor到当前单元格的矩形区域
+    const r1 = Math.min(anchorCell.r, rowIdx), r2 = Math.max(anchorCell.r, rowIdx);
+    const c1 = Math.min(anchorCell.c, colIdx), c2 = Math.max(anchorCell.c, colIdx);
+    selectedCells.clear();
+    for (let r = r1; r <= r2; r++)
+      for (let c = c1; c <= c2; c++)
+        selectedCells.set(r + '-' + c, true);
+  } else if (e.ctrlKey || e.metaKey) {
+    // Ctrl多选：切换当前单元格
+    if (selectedCells.has(key)) { selectedCells.delete(key); anchorCell = null; }
+    else { selectedCells.set(key, true); anchorCell = { r: rowIdx, c: colIdx }; }
+  } else {
+    // 单击：只选当前
+    selectedCells.clear();
+    selectedCells.set(key, true);
+    anchorCell = { r: rowIdx, c: colIdx };
+  }
+  applyCellHighlights();
+  updateSelBar();
+}
+
+function applyCellHighlights(){
+  document.querySelectorAll('#page-data td.cell').forEach(td => {
+    const k = td.dataset.r + '-' + td.dataset.c;
+    td.classList.toggle('selected', selectedCells.has(k));
+  });
+  // anchor高亮
+  document.querySelectorAll('#page-data td.cell.anchor').forEach(td => td.classList.remove('anchor'));
+  if (anchorCell) {
+    const el = document.querySelector(`#page-data td.cell[data-r="${anchorCell.r}"][data-c="${anchorCell.c}"]`);
+    if (el) el.classList.add('anchor');
+  }
+}
+
+function updateSelBar(){
+  const bar = document.getElementById('selBar');
+  const count = selectedCells.size;
+  document.getElementById('selCount').textContent = count;
+  bar.style.display = count > 0 ? 'flex' : 'none';
+}
+
+function clearCellSelection(){
+  selectedCells.clear(); anchorCell = null;
+  applyCellHighlights(); updateSelBar();
+}
+
+function selectEntireTable(){
+  // 选中当前页所有数据单元格（不含操作列）
+  const rows = currentPageList.length;
+  const cols = COLS.length; // 不含OP_COL
+  selectedCells.clear();
+  for (let r = 0; r < rows; r++)
+    for (let c = 0; c < cols; c++)
+      selectedCells.set(r + '-' + c, true);
+  anchorCell = null;
+  applyCellHighlights(); updateSelBar();
+}
+
+function copySelectedCells(){
+  if (selectedCells.size === 0) { showToast('未选中任何单元格', 'error'); return; }
+  // 找出选中区域的行列范围
+  let minR = Infinity, maxR = -1, minC = Infinity, maxC = -1;
+  selectedCells.forEach((_, k) => {
+    const [r, c] = k.split('-').map(Number);
+    minR = Math.min(minR, r); maxR = Math.max(maxR, r);
+    minC = Math.min(minC, c); maxC = Math.max(maxC, c);
+  });
+  // 生成tab分隔的表格文本
+  const lines = [];
+  for (let r = minR; r <= maxR; r++) {
+    const row = [];
+    const record = currentPageList[r];
+    for (let c = minC; c <= maxC; c++) {
+      if (selectedCells.has(r + '-' + c)) {
+        const col = COLS[c]; // 数据列索引对应COLS
+        if (col) {
+          const v = record ? record[col.key] : '';
+          row.push(v != null ? String(v) : '');
+        } else { row.push(''); }
+      } else {
+        row.push(''); // 未选中的位置留空
+      }
+    }
+    lines.push(row.join('\t'));
+  }
+  const text = lines.join('\n');
+  navigator.clipboard.writeText(text).then(() => {
+    showToast(`已复制 ${selectedCells.size} 个单元格`, 'success');
+  }).catch(() => {
+    const ta = document.createElement('textarea');
+    ta.value = text; document.body.appendChild(ta); ta.select();
+    try { document.execCommand('copy'); showToast(`已复制 ${selectedCells.size} 个单元格`, 'success'); } catch(e) { showToast('复制失败', 'error'); }
+    document.body.removeChild(ta);
+  });
+}
+
 function getFiltered(){
   const q = document.getElementById('search').value.trim().toLowerCase();
   const fc = document.getElementById('filterCompany').value;
@@ -621,7 +733,11 @@ function toggleSort(key){
   page = 1; renderBody(); renderHead();
 }
 
-let currentPageList = []; // 当前页数据，供单元格复制取值用
+let currentPageList = []; // 当前页数据
+// 单元格选择状态：Map<"rowIdx-colIdx", true>
+let selectedCells = new Map();
+let anchorCell = null; // Shift范围选的起始单元格
+
 function renderBody(){
   const list = getFiltered();
   const total = list.length;
@@ -631,11 +747,13 @@ function renderBody(){
   const pageList = list.slice(start, start + pageSize);
   currentPageList = pageList;
   const allCols = [...COLS, OP_COL];
+  // 清除选择（翻页后重置）
+  selectedCells.clear(); anchorCell = null; updateSelBar();
   if (pageList.length === 0) {
     document.getElementById('tbody').innerHTML = '<tr class="empty"><td colspan="'+allCols.length+'">没有匹配的记录</td></tr>';
   } else {
-    document.getElementById('tbody').innerHTML = pageList.map((r, idx) => {
-      return '<tr>' + allCols.map(c => {
+    document.getElementById('tbody').innerHTML = pageList.map((r, rowIdx) => {
+      return '<tr>' + allCols.map((c, colIdx) => {
         if (c.type === 'op') {
           return '<td><div class="row-ops">' +
             `<button class="icon-btn-sm" onclick="openEdit('${esc(r.id)}')">编辑</button>` +
@@ -643,13 +761,9 @@ function renderBody(){
             '</div></td>';
         }
         const v = r[c.key];
-        if (v == null || v === '') return '<td class="muted">—</td>';
-        if (c.type === 'status') return `<td><span class="tag tag-status-${esc(v)}">${esc(v)}</span></td>`;
-        if (c.type === 'mono' || c.type === 'copy') {
-          const widthClass = c.key === 'secret' ? 'col-narrow col-secret' : (c.key === 'email' ? 'col-narrow col-email' : '');
-          return `<td class="mono ${widthClass}">${esc(v)}</td>`;
-        }
-        return `<td>${esc(v)}</td>`;
+        const display = (v == null || v === '') ? '<span class="muted">—</span>' :
+          (c.type === 'status') ? `<span class="tag tag-status-${esc(v)}">${esc(v)}</span>` : esc(v);
+        return `<td class="cell" data-r="${rowIdx}" data-c="${colIdx}" data-key="${c.key}" onclick="cellClick(event,${rowIdx},${colIdx})">${display}</td>`;
       }).join('') + '</tr>';
     }).join('');
   }
