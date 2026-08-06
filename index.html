@@ -104,6 +104,8 @@
   .tag-status-审核通过 { background: #f0f9eb; color: #67c23a; border: 1px solid #e1f3d8; }
   .tag-status-待注册 { background: #fef0f0; color: #f56c6c; border: 1px solid #fde2e2; }
   .tag-status-已验收 { background: #f4f4f5; color: #909399; border: 1px solid #e9e9eb; }
+  .tag-status-备案完成 { background: #e6fffb; color: #13c2c2; border: 1px solid #87e8de; }
+  .tag-status-待验收 { background: #f9f0ff; color: #722ed1; border: 1px solid #d3adf7; }
 
   .copy-cell:hover { background: #ecf5ff !important; color: var(--primary); cursor: pointer; }
   .copy-cell { transition: background .15s; }
@@ -451,15 +453,15 @@ const COLS = [
   { key: 'originalId', label: '原始ID', type: 'copy', form: { type: 'text' } },
   { key: 'secret', label: '密钥', type: 'copy', form: { type: 'textarea' } },
   { key: 'admin', label: '管理员', sortable: true, form: { type: 'text' } },
-  { key: 'status', label: '状态', type: 'status', sortable: true, form: { type: 'select', options: ['', '待审核', '审核中', '审核通过', '待注册', '已验收'] } },
+  { key: 'status', label: '状态', type: 'status', sortable: true, form: { type: 'select', options: ['', '待审核', '审核中', '审核通过', '备案完成', '待注册', '待验收', '已验收'] } },
   { key: 'email', label: '邮箱', type: 'mono', form: { type: 'text' } },
   { key: 'miniProgramPassword', label: '小程序密码', type: 'copy', form: { type: 'text' } },
   { key: 'submitDate', label: '提交时间', type: 'date', sortable: true, form: { type: 'date' }, formShow: false }
 ];
-const STATUS_LIST = ['待审核','审核中','审核通过','待注册','已验收'];
+const STATUS_LIST = ['待审核','审核中','审核通过','备案完成','待注册','待验收','已验收'];
 const OP_COL = { key: '_op', label: '操作', type: 'op' };
-// 状态排序优先级：待注册 > 审核中 > 待审核 > 审核通过 > 已验收（后两个排最后）
-const STATUS_ORDER = { '待注册': 0, '审核中': 1, '待审核': 2, '审核通过': 3, '已验收': 4 };
+// 状态排序优先级：待注册 > 待验收 > 审核中 > 待审核 > 审核通过 > 备案完成 > 已验收（需处理项靠前，已完成项靠后）
+const STATUS_ORDER = { '待注册': 0, '待验收': 1, '审核中': 2, '待审核': 3, '审核通过': 4, '备案完成': 5, '已验收': 6 };
 function getStatusOrder(s){ return STATUS_ORDER[s] != null ? STATUS_ORDER[s] : 99; }
 
 let sortKey = null, sortDesc = false, page = 1, pageSize = 20, editingId = null;
@@ -832,8 +834,8 @@ function saveRecord(){
   COLS.forEach(c => { const el = document.getElementById('f_' + c.key); if (el) data[c.key] = el.value.trim() || null; });
   // 提交时间根据状态自动管理（表单中已隐藏）
   const today = new Date().toISOString().slice(0, 10);
-  if (data.status === '审核通过' || data.status === '已验收') {
-    data.submitDate = null;  // 审核通过/已验收清空提交时间
+  if (data.status === '审核通过' || data.status === '备案完成' || data.status === '待验收' || data.status === '已验收') {
+    data.submitDate = null;  // 审核通过/备案完成/待验收/已验收 清空提交时间
   } else if (data.status === '审核中') {
     // 审核中：如果没有提交时间则填今天，已有则保留
     const existing = editingId ? (getAllRecords().find(r => r.id === editingId) || {}).submitDate : null;
@@ -1029,7 +1031,7 @@ function renderDashboard(){
     </div>`).join('') || '<div class="muted" style="font-size:12px;">暂无数据</div>';
 
   // 状态分布
-  const statusColors = { '待审核':'#e6a23c', '审核中':'#409eff', '审核通过':'#67c23a', '待注册':'#f56c6c', '已验收':'#909399' };
+  const statusColors = { '待审核':'#e6a23c', '审核中':'#409eff', '审核通过':'#67c23a', '备案完成':'#13c2c2', '待注册':'#f56c6c', '待验收':'#722ed1', '已验收':'#909399' };
   let statusHtml = STATUS_LIST.map(s => {
     const count = byStatus[s];
     const pct = total ? (count/total*100).toFixed(1) : 0;
@@ -1057,9 +1059,11 @@ function renderDashboard(){
   const pendingReview = all.filter(r => r.status === '待审核').length;
   const overdue = all.filter(r => { if (r.status !== '审核中' || !r.submitDate) return false; const s = new Date(r.submitDate.split(' ')[0]); return !isNaN(s) && (now - s) / 86400000 >= 8; }).length;
   const pendingRegister = all.filter(r => r.status === '待注册').length;
+  const pendingAcceptance = all.filter(r => r.status === '待验收').length;
   if (pendingReview > 0) todos.push({ icon:'📝', text:`待审核 ${pendingReview} 个`, color:'var(--warning)' });
   if (overdue > 0) todos.push({ icon:'⏰', text:`审核中超 8 天 ${overdue} 个`, color:'var(--danger)' });
   if (pendingRegister > 0) todos.push({ icon:'🔐', text:`待注册 ${pendingRegister} 个`, color:'var(--primary)' });
+  if (pendingAcceptance > 0) todos.push({ icon:'🔍', text:`待验收 ${pendingAcceptance} 个`, color:'var(--primary)' });
   document.getElementById('todoItems').innerHTML = todos.length ? todos.map(t => `<div style="display:flex;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid #f0f2f5;font-size:12px;"><span style="font-size:16px;">${t.icon}</span><span style="color:${t.color};">${esc(t.text)}</span></div>`).join('') : '<div class="muted" style="font-size:12px;">✓ 暂无待处理事项</div>';
 
   // 最近提交
