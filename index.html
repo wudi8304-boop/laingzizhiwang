@@ -275,6 +275,8 @@
         <h1>小程序备案数据</h1>
         <div class="actions">
           <button class="btn success sm" onclick="openAdd()">+ 新增</button>
+          <button class="btn ghost sm" onclick="document.getElementById('recordImportFile').click()">⬆ 导入</button>
+          <input type="file" id="recordImportFile" accept=".csv,.txt,.xlsx" style="display:none;" onchange="importRecords(event)">
           <button class="btn ghost sm" onclick="exportJSON()">导出</button>
         </div>
       </div>
@@ -333,7 +335,7 @@
         <h1>监控配置</h1>
         <div class="actions">
           <button class="btn sm" onclick="saveMonitorConfig()">保存配置</button>
-          <button class="btn success sm" onclick="exportMonitorConfig()">导出 config.json</button>
+          <button class="btn success sm" onclick="runCheckAll()">立即检测</button>
         </div>
       </div>
       <div class="monitor-status-bar">
@@ -348,8 +350,18 @@
           <button class="btn ghost sm" onclick="setAllMonitor(false)">全部暂停</button>
         </div>
       </div>
-      <div class="help-tip warn">
-        ⚠️ <strong>监控机制</strong>：Selenium 无头浏览器 + ddddocr 自动识别验证码。每家公司查询间隔 30-60 秒，避免封IP。验证码识别失败会截图并暂停该公司。
+      <div class="help-tip">
+        ℹ️ <strong>监控机制</strong>：通过 apihz.cn 小程序备案查询 API，每次仅查询数量并对比历史记录。发现数量增加即标记"有新增"。每次调用消耗 10 盟点（约0.01元），调用失败不重试、不更新数量。
+      </div>
+      <div class="section config-section">
+        <div class="section-title">🔑 apihz API 配置（备案查询接口）</div>
+        <div class="form-grid">
+          <div class="form-item"><label>开发者 ID</label><input type="text" id="cfg_apihz_id" placeholder="如 10019926"></div>
+          <div class="form-item"><label>开发者 KEY</label><input type="password" id="cfg_apihz_key" placeholder="apihz 通讯秘钥"></div>
+        </div>
+        <div class="help-tip" style="margin-top:8px;margin-bottom:0;font-size:11px;">
+          接口地址：cn.apihz.cn/api/wangzhan/syicpxcx.php，单价 10 盟点/次。ID/KEY 在 apihz.cn 后台【个人资料】查看。
+        </div>
       </div>
       <div class="section config-section">
         <div class="section-title">📧 邮箱通知配置（SMTP）</div>
@@ -374,19 +386,6 @@
         <div style="display:flex;gap:6px;align-items:center;">
           <input type="time" id="newTime" value="12:00" style="width:80px;height:32px;border:1px solid var(--border);border-radius:5px;padding:0 6px;font-size:13px;">
           <button class="btn ghost sm" onclick="addTime()">+ 添加时间</button>
-        </div>
-      </div>
-      <div class="section config-section">
-        <div class="section-title">💾 配置导入/导出</div>
-        <div style="display:flex;gap:6px;flex-wrap:wrap;">
-          <button class="btn sm" onclick="exportMonitorConfig()">⬇ 导出 config.json</button>
-          <button class="btn success sm" onclick="exportRecordsForMonitor()">⬇ 导出 records.json</button>
-          <button class="btn ghost sm" onclick="document.getElementById('importFile').click()">⬆ 导入配置</button>
-          <input type="file" id="importFile" accept=".json" style="display:none;" onchange="importMonitorConfig(event)">
-          <button class="btn warning sm" onclick="showTestMailCmd()">📨 测试邮件命令</button>
-        </div>
-        <div class="help-tip" style="margin-top:10px;margin-bottom:0;">
-          📋 <strong>records.json</strong>：包含当前所有小程序数据，供服务器每天早上检查"审核中超 8 天"并发提醒邮件。
         </div>
       </div>
     </div>
@@ -435,13 +434,18 @@ const EMAIL_STORAGE_KEY = 'laingzizhiwang_email_list';
 const SESSION_KEY = 'laingzizhiwang_authed';
 
 const DEFAULT_MONITOR_CONFIG = {
+  apihz: { id: '', key: '' },
   smtp: { host: 'smtp.qiye.aliyun.com', port: 465, encrypt: 'ssl', from_name: '备案监控', user: '', password: '', to: [] },
   companies: [
-    { name: '圣杰科技', enabled: true }, { name: '晟锋智联', enabled: true },
-    { name: '追影科技', enabled: true }, { name: '伴戏科技', enabled: true },
-    { name: '暖剧科技', enabled: true }, { name: '张家口乐强农业科技', enabled: true },
-    { name: '京宝芯联科技', enabled: true }, { name: '智承万兴科技', enabled: true },
-    { name: '文智化贤', enabled: true }
+    { name: '圣杰科技', fullName: '内蒙古圣杰科技发展有限公司', enabled: true, lastCount: null, lastCheck: '', hasNew: false },
+    { name: '晟锋智联', fullName: '', enabled: true, lastCount: null, lastCheck: '', hasNew: false },
+    { name: '追影科技', fullName: '', enabled: true, lastCount: null, lastCheck: '', hasNew: false },
+    { name: '伴戏科技', fullName: '', enabled: true, lastCount: null, lastCheck: '', hasNew: false },
+    { name: '暖剧科技', fullName: '', enabled: true, lastCount: null, lastCheck: '', hasNew: false },
+    { name: '张家口乐强农业科技', fullName: '', enabled: true, lastCount: null, lastCheck: '', hasNew: false },
+    { name: '京宝芯联科技', fullName: '', enabled: true, lastCount: null, lastCheck: '', hasNew: false },
+    { name: '智承万兴科技', fullName: '', enabled: true, lastCount: null, lastCheck: '', hasNew: false },
+    { name: '文智化贤', fullName: '', enabled: true, lastCount: null, lastCheck: '', hasNew: false }
   ],
   times: ['11:00', '13:00', '15:00', '18:00', '20:00']
 };
@@ -449,6 +453,8 @@ const DEFAULT_MONITOR_CONFIG = {
 const COLS = [
   { key: 'companyName', label: '公司', type: 'text', sortable: true, form: { type: 'select', options: ['', '圣杰科技', '晟锋智联', '追影科技', '伴戏科技', '暖剧科技', '张家口乐强农业科技', '京宝芯联科技', '智承万兴科技', '文智化贤'] } },
   { key: 'miniProgramName', label: '小程序名称', type: 'copy', sortable: true, form: { type: 'text' } },
+  { key: 'description', label: '简介', type: 'text', sortable: true, form: { type: 'text' }, tableShow: false },
+  { key: 'category', label: '类目', type: 'text', sortable: true, form: { type: 'text' }, tableShow: false },
   { key: 'appid', label: 'AppID', type: 'copy', sortable: true, form: { type: 'text' } },
   { key: 'originalId', label: '原始ID', type: 'copy', form: { type: 'text' } },
   { key: 'secret', label: '密钥', type: 'copy', form: { type: 'textarea' } },
@@ -722,7 +728,7 @@ function renderFilters(){
 }
 
 function renderHead(){
-  const allCols = [...COLS, OP_COL];
+  const allCols = [...COLS.filter(c => c.tableShow !== false), OP_COL];
   document.getElementById('thead').innerHTML = allCols.map(c => {
     if (c.type === 'op') return `<th class="op-col">${c.label}</th>`;
     const arrow = sortKey === c.key ? (sortDesc ? '▼' : '▲') : '';
@@ -749,7 +755,7 @@ function renderBody(){
   const start = (page - 1) * pageSize;
   const pageList = list.slice(start, start + pageSize);
   currentPageList = pageList;
-  const allCols = [...COLS, OP_COL];
+  const allCols = [...COLS.filter(c => c.tableShow !== false), OP_COL];
   // 清除选择（翻页后重置）
   selectedCells.clear(); anchorCell = null; updateSelBar();
   if (pageList.length === 0) {
@@ -1077,6 +1083,8 @@ function setMonitorConfig(cfg){ localStorage.setItem(MONITOR_CONFIG_KEY, JSON.st
 
 function loadMonitorConfigToForm(){
   const cfg = getMonitorConfig();
+  document.getElementById('cfg_apihz_id').value = (cfg.apihz && cfg.apihz.id) || '';
+  document.getElementById('cfg_apihz_key').value = (cfg.apihz && cfg.apihz.key) || '';
   document.getElementById('cfg_smtp_host').value = cfg.smtp.host || '';
   document.getElementById('cfg_smtp_port').value = cfg.smtp.port || 465;
   document.getElementById('cfg_smtp_encrypt').value = cfg.smtp.encrypt || 'ssl';
@@ -1090,13 +1098,22 @@ function loadMonitorConfigToForm(){
 }
 
 function renderCompanyMonitorList(companies){
-  document.getElementById('companyMonitorList').innerHTML = companies.map((c, i) => `
-    <div class="company-monitor-row">
-      <input type="text" value="${esc(c.name)}" data-idx="${i}" onchange="updateCompanyName(${i}, this.value)" style="flex:1;height:32px;border:1px solid var(--border);border-radius:5px;padding:0 10px;font-size:13px;">
+  document.getElementById('companyMonitorList').innerHTML = companies.map((c, i) => {
+    const countBadge = c.lastCount != null
+      ? `<span style="background:${c.hasNew ? 'var(--danger)' : 'var(--primary)'};color:#fff;padding:2px 10px;border-radius:10px;font-size:12px;font-weight:600;white-space:nowrap;">${c.hasNew ? '新增!' : ''}${c.lastCount}个</span>`
+      : '<span style="background:#f0f2f5;color:var(--text-3);padding:2px 10px;border-radius:10px;font-size:12px;white-space:nowrap;">未检测</span>';
+    const checkText = c.lastCheck ? `<span class="muted" style="font-size:11px;">${esc(c.lastCheck)}</span>` : '';
+    return `
+    <div class="company-monitor-row" style="flex-wrap:wrap;">
+      <input type="text" value="${esc(c.name)}" data-idx="${i}" onchange="updateCompanyName(${i}, this.value)" placeholder="简称" style="width:120px;height:32px;border:1px solid var(--border);border-radius:5px;padding:0 10px;font-size:13px;">
+      ${countBadge}
+      <input type="text" value="${esc(c.fullName || '')}" data-idx="${i}" onchange="updateCompanyFullName(${i}, this.value)" placeholder="主体全称（用于API查询）" style="flex:1;min-width:200px;height:32px;border:1px solid var(--border);border-radius:5px;padding:0 10px;font-size:13px;">
+      ${checkText}
       <span class="status-text ${c.enabled ? 'running' : ''}" id="company-status-${i}">${c.enabled ? '● 监控中' : '○ 已暂停'}</span>
       <label class="switch"><input type="checkbox" ${c.enabled ? 'checked' : ''} onchange="toggleCompanyMonitor(${i}, this.checked)"><span class="slider"></span></label>
       <button class="icon-btn-sm del" onclick="removeCompany(${i})">删除</button>
-    </div>`).join('');
+    </div>`;
+  }).join('');
 }
 
 function toggleCompanyMonitor(idx, enabled){
@@ -1111,9 +1128,10 @@ function toggleCompanyMonitor(idx, enabled){
 }
 
 function updateCompanyName(idx, name){ const cfg = getMonitorConfig(); if (cfg.companies[idx]) { cfg.companies[idx].name = name.trim(); setMonitorConfig(cfg); } }
+function updateCompanyFullName(idx, fullName){ const cfg = getMonitorConfig(); if (cfg.companies[idx]) { cfg.companies[idx].fullName = fullName.trim(); setMonitorConfig(cfg); } }
 function setAllMonitor(enabled){ const cfg = getMonitorConfig(); cfg.companies.forEach(c => c.enabled = enabled); setMonitorConfig(cfg); renderCompanyMonitorList(cfg.companies); updateMonitorStats(); showToast(enabled ? '已全部开启' : '已全部暂停', 'success'); }
 function updateMonitorStats(){ const cfg = getMonitorConfig(); const total = cfg.companies.length; const running = cfg.companies.filter(c => c.enabled).length; document.getElementById('totalCompanies').textContent = total; document.getElementById('runningCompanies').textContent = running; document.getElementById('pausedCompanies').textContent = total - running; }
-function addCompany(){ const cfg = getMonitorConfig(); cfg.companies.push({ name: '', enabled: true }); setMonitorConfig(cfg); renderCompanyMonitorList(cfg.companies); updateMonitorStats(); }
+function addCompany(){ const cfg = getMonitorConfig(); cfg.companies.push({ name: '', fullName: '', enabled: true, lastCount: null, lastCheck: '', hasNew: false }); setMonitorConfig(cfg); renderCompanyMonitorList(cfg.companies); updateMonitorStats(); }
 function removeCompany(idx){ if (!confirm('确认删除该公司？')) return; const cfg = getMonitorConfig(); cfg.companies.splice(idx, 1); setMonitorConfig(cfg); renderCompanyMonitorList(cfg.companies); updateMonitorStats(); }
 
 function renderTimeList(times){
@@ -1123,8 +1141,22 @@ function addTime(){ const t = document.getElementById('newTime').value; if (!t) 
 function removeTime(idx){ const cfg = getMonitorConfig(); cfg.times.splice(idx, 1); setMonitorConfig(cfg); renderTimeList(cfg.times); }
 
 function saveMonitorConfig(){
-  const cfg = { smtp: { host: document.getElementById('cfg_smtp_host').value.trim(), port: parseInt(document.getElementById('cfg_smtp_port').value) || 465, encrypt: document.getElementById('cfg_smtp_encrypt').value, from_name: document.getElementById('cfg_smtp_from_name').value.trim() || '备案监控', user: document.getElementById('cfg_smtp_user').value.trim(), password: document.getElementById('cfg_smtp_password').value.trim(), to: document.getElementById('cfg_smtp_to').value.split(',').map(s => s.trim()).filter(Boolean) }, companies: [], times: getMonitorConfig().times || [] };
-  document.querySelectorAll('#companyMonitorList input[type=text]').forEach(inp => { const v = inp.value.trim(); const idx = parseInt(inp.dataset.idx); const enabled = getMonitorConfig().companies[idx] ? getMonitorConfig().companies[idx].enabled : true; if (v) cfg.companies.push({ name: v, enabled: enabled }); });
+  const oldCfg = getMonitorConfig();
+  const cfg = {
+    apihz: { id: document.getElementById('cfg_apihz_id').value.trim(), key: document.getElementById('cfg_apihz_key').value.trim() },
+    smtp: { host: document.getElementById('cfg_smtp_host').value.trim(), port: parseInt(document.getElementById('cfg_smtp_port').value) || 465, encrypt: document.getElementById('cfg_smtp_encrypt').value, from_name: document.getElementById('cfg_smtp_from_name').value.trim() || '备案监控', user: document.getElementById('cfg_smtp_user').value.trim(), password: document.getElementById('cfg_smtp_password').value.trim(), to: document.getElementById('cfg_smtp_to').value.split(',').map(s => s.trim()).filter(Boolean) },
+    companies: [], times: oldCfg.times || []
+  };
+  const oldCompanies = oldCfg.companies || [];
+  const rows = document.querySelectorAll('#companyMonitorList .company-monitor-row');
+  rows.forEach((row, i) => {
+    const inputs = row.querySelectorAll('input[type=text]');
+    const name = inputs[0] ? inputs[0].value.trim() : '';
+    const fullName = inputs[1] ? inputs[1].value.trim() : '';
+    const old = oldCompanies[i] || {};
+    if (name) cfg.companies.push({ name: name, fullName: fullName, enabled: old.enabled != null ? old.enabled : true, lastCount: old.lastCount != null ? old.lastCount : null, lastCheck: old.lastCheck || '', hasNew: old.hasNew || false });
+  });
+  if (!cfg.apihz.id || !cfg.apihz.key) { showToast('请填写 apihz 开发者 ID 和 KEY', 'error'); return; }
   if (!cfg.smtp.user || !cfg.smtp.password) { showToast('请填写发件邮箱和授权码', 'error'); return; }
   if (cfg.smtp.to.length === 0) { showToast('请填写至少一个收件邮箱', 'error'); return; }
   if (cfg.companies.length === 0) { showToast('请添加至少一个监控公司', 'error'); return; }
@@ -1132,6 +1164,62 @@ function saveMonitorConfig(){
 }
 
 function loadDefaultConfig(){ if (!confirm('恢复默认配置？')) return; localStorage.removeItem(MONITOR_CONFIG_KEY); loadMonitorConfigToForm(); showToast('已恢复默认', 'success'); }
+
+// ============ apihz 备案数量检测 ============
+let _checking = false;
+async function checkOneCompany(company, apihz){
+  const main = company.fullName || company.name;
+  if (!main) return { success: false, msg: '未填写主体全称' };
+  const url = `https://cn.apihz.cn/api/wangzhan/syicpxcx.php?id=${encodeURIComponent(apihz.id)}&key=${encodeURIComponent(apihz.key)}&main=${encodeURIComponent(main)}&hctype=1&page=1`;
+  try {
+    const res = await fetch(url, { method: 'GET' });
+    const data = await res.json();
+    if (data.code === 200) {
+      const total = data.total != null ? data.total : (data.datas ? data.datas.length : 0);
+      return { success: true, total: total };
+    }
+    return { success: false, msg: data.msg || '查询失败' };
+  } catch(e) {
+    return { success: false, msg: '网络错误: ' + e.message };
+  }
+}
+
+async function runCheckAll(){
+  if (_checking) { showToast('正在检测中，请稍候', 'error'); return; }
+  saveMonitorConfig();
+  const cfg = getMonitorConfig();
+  if (!cfg.apihz.id || !cfg.apihz.key) { showToast('请先配置 apihz ID 和 KEY', 'error'); return; }
+  const targets = cfg.companies.map((c, i) => ({ c: c, i: i })).filter(x => x.c.enabled && (x.c.fullName || x.c.name));
+  if (targets.length === 0) { showToast('没有启用的公司或未填写主体全称', 'error'); return; }
+  _checking = true;
+  const btn = event ? event.target : null;
+  if (btn) { btn.disabled = true; btn.textContent = '检测中...'; }
+  let hasAnyNew = false;
+  try {
+    for (const x of targets) {
+      const r = await checkOneCompany(x.c, cfg.apihz);
+      const now = new Date().toLocaleString('zh-CN', { hour12: false });
+      if (r.success) {
+        const prev = x.c.lastCount;
+        x.c.lastCount = r.total;
+        x.c.lastCheck = now;
+        if (prev != null && r.total > prev) { x.c.hasNew = true; hasAnyNew = true; }
+        else if (prev == null) { x.c.hasNew = false; }
+      } else {
+        x.c.lastCheck = now + ' 失败';
+      }
+      cfg.companies[x.i] = x.c;
+      setMonitorConfig(cfg);
+      renderCompanyMonitorList(cfg.companies);
+      if (x !== targets[targets.length - 1]) await new Promise(r => setTimeout(r, 2000));
+    }
+    if (hasAnyNew) showToast('检测完成，发现新增备案！', 'success');
+    else showToast('检测完成，无新增', 'success');
+  } finally {
+    _checking = false;
+    if (btn) { btn.disabled = false; btn.textContent = '立即检测'; }
+  }
+}
 
 function buildConfigJSON(){
   const cfg = getMonitorConfig();
