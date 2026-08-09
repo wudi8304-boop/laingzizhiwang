@@ -1224,8 +1224,9 @@ async function checkOneCompany(company, apihz){
     const res = await fetch(url, { method: 'GET' });
     const data = await res.json();
     if (data.code === 200) {
-      const total = data.total != null ? data.total : (data.datas ? data.datas.length : 0);
-      return { success: true, total: total };
+      const list = Array.isArray(data.datas) ? data.datas : [];
+      const total = data.total != null ? data.total : list.length;
+      return { success: true, total: total, list: list };
     }
     return { success: false, msg: data.msg || '查询失败' };
   } catch(e) {
@@ -1244,21 +1245,37 @@ async function runCheckAll(){
   const btn = event ? event.target : null;
   if (btn) { btn.disabled = true; btn.textContent = '检测中...'; }
   let hasAnyNew = false;
-  const newItems = []; // 记录有新增的公司，用于钉钉通知
+  const newDetailLines = []; // 记录新增小程序的明细，用于钉钉通知
   try {
     for (const x of targets) {
+      // 每个公司只检测一次，无论成功失败
       const r = await checkOneCompany(x.c, cfg.apihz);
       const now = new Date().toLocaleString('zh-CN', { hour12: false });
       if (r.success) {
         const prev = x.c.lastCount;
+        const prevKeys = Array.isArray(x.c.lastKeys) ? x.c.lastKeys : [];
+        // 用小程序名称+备案号作为唯一标识，兼容字段缺失
+        const curItems = (r.list || []).map(d => ({
+          name: d.name || d.xcxname || d.title || '未命名',
+          icp: d.icp || d.beian || d.record || ''
+        }));
+        const curKeys = curItems.map(it => (it.name + '|' + it.icp));
         x.c.lastCount = r.total;
+        x.c.lastKeys = curKeys;
         x.c.lastCheck = now;
         if (prev != null && r.total > prev) {
+          // 找出本次比上次新增的小程序明细
+          const added = curItems.filter(it => !prevKeys.includes(it.name + '|' + it.icp));
           x.c.hasNew = true; hasAnyNew = true;
-          newItems.push(`${x.c.name}（${x.c.fullName || x.c.name}）：${prev} → ${r.total}，新增 ${r.total - prev} 个`);
+          newDetailLines.push(`【${x.c.name}】新增 ${added.length} 个小程序：`);
+          added.forEach((it, idx) => {
+            newDetailLines.push(`  ${idx + 1}. ${it.name}${it.icp ? '（' + it.icp + '）' : ''}`);
+          });
+        } else if (prev == null) {
+          x.c.hasNew = false;
         }
-        else if (prev == null) { x.c.hasNew = false; }
       } else {
+        // 检测失败也记录时间，不更新数量，不算新增
         x.c.lastCheck = now + ' 失败';
       }
       cfg.companies[x.i] = x.c;
@@ -1268,9 +1285,9 @@ async function runCheckAll(){
     }
     if (hasAnyNew) {
       showToast('检测完成，发现新增备案！正在推送钉钉通知...', 'success');
-      // 推送钉钉群通知
+      // 推送钉钉群通知，包含新增小程序明细
       const keyword = cfg.dingtalk.keyword || '备案监控';
-      const content = `【${keyword}】发现新增小程序备案！\n检测时间：${new Date().toLocaleString('zh-CN', { hour12: false })}\n\n${newItems.join('\n')}\n\n请及时登录系统查看详情。`;
+      const content = `【${keyword}】发现新增小程序备案！\n检测时间：${new Date().toLocaleString('zh-CN', { hour12: false })}\n\n${newDetailLines.join('\n')}\n\n请及时登录系统查看详情。`;
       const dr = await sendDingTalk(cfg.dingtalk, content);
       if (dr.success) showToast('检测完成，钉钉通知已推送', 'success');
       else showToast('检测完成，但钉钉通知失败：' + dr.msg, 'error');
