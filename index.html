@@ -1164,17 +1164,26 @@ async function dingSign(secret, timestamp){
 }
 
 // 发送钉钉机器人消息（text 类型）。返回 {success, msg, raw}
+// 通过服务器Nginx反向代理(/ding-proxy/)转发到钉钉API，解决浏览器CORS限制
 async function sendDingTalk(ding, content){
   if (!ding || !ding.webhook) return { success: false, msg: '未配置 Webhook' };
   const keyword = ding.keyword || '备案监控';
   // 确保内容包含关键词（钉钉自定义关键词安全设置要求）
   const text = content.includes(keyword) ? content : `${keyword} ${content}`;
-  let url = ding.webhook;
+  // 从webhook中提取access_token，拼接到同源代理路径
+  let accessToken = '';
+  try {
+    const m = ding.webhook.match(/access_token=([^&]+)/);
+    if (m) accessToken = m[1];
+  } catch(e) {}
+  if (!accessToken) return { success: false, msg: 'Webhook中未找到access_token' };
+  // 同源代理路径，避免CORS
+  let url = `/ding-proxy/robot/send?access_token=${accessToken}`;
   try {
     if (ding.secret) {
       const timestamp = Date.now();
       const sign = await dingSign(ding.secret, timestamp);
-      url += (url.includes('&') ? '&' : '?') + `timestamp=${timestamp}&sign=${sign}`;
+      url += `&timestamp=${timestamp}&sign=${sign}`;
     }
     const res = await fetch(url, {
       method: 'POST',
@@ -1185,7 +1194,7 @@ async function sendDingTalk(ding, content){
     if (data.errcode === 0) return { success: true, msg: '发送成功', raw: data };
     return { success: false, msg: data.errmsg || ('errcode:' + data.errcode), raw: data };
   } catch(e) {
-    return { success: false, msg: '网络错误: ' + e.message };
+    return { success: false, msg: '网络错误: ' + e.message + '（本地预览不支持钉钉代理，请在线上环境测试）' };
   }
 }
 
