@@ -364,15 +364,17 @@
         </div>
       </div>
       <div class="section config-section">
-        <div class="section-title">📧 邮箱通知配置（SMTP）</div>
+        <div class="section-title">🔔 钉钉群机器人通知</div>
         <div class="form-grid">
-          <div class="form-item"><label>SMTP 服务器</label><input type="text" id="cfg_smtp_host" placeholder="如 smtp.qiye.aliyun.com"></div>
-          <div class="form-item"><label>端口</label><input type="number" id="cfg_smtp_port" placeholder="465 或 587"></div>
-          <div class="form-item"><label>加密方式</label><select id="cfg_smtp_encrypt"><option value="ssl">SSL（465，推荐）</option><option value="tls">TLS（587）</option><option value="none">无加密</option></select></div>
-          <div class="form-item"><label>发件人名称</label><input type="text" id="cfg_smtp_from_name" placeholder="备案监控"></div>
-          <div class="form-item"><label>发件邮箱账号</label><input type="text" id="cfg_smtp_user" placeholder="发件邮箱地址"></div>
-          <div class="form-item"><label>邮箱授权码 <span style="color:var(--danger);">*</span></label><input type="password" id="cfg_smtp_password" placeholder="邮箱授权码（非登录密码）"></div>
-          <div class="form-item full"><label>收件邮箱（多个用英文逗号分隔）</label><input type="text" id="cfg_smtp_to" placeholder="如 a@xx.com, b@yy.com"></div>
+          <div class="form-item full"><label>Webhook 地址 <span style="color:var(--danger);">*</span></label><input type="text" id="cfg_ding_webhook" placeholder="如 https://oapi.dingtalk.com/robot/send?access_token=xxx"></div>
+          <div class="form-item"><label>加签密钥（SEC开头，可选）</label><input type="password" id="cfg_ding_secret" placeholder="如 SECxxxxxxxx"></div>
+          <div class="form-item"><label>通知关键词（安全设置，默认备案监控）</label><input type="text" id="cfg_ding_keyword" placeholder="备案监控"></div>
+        </div>
+        <div style="margin-top:8px;display:flex;gap:6px;flex-wrap:wrap;align-items:center;">
+          <button class="btn warning sm" onclick="testDingTalk()">📨 测试钉钉通知</button>
+        </div>
+        <div class="help-tip" style="margin-top:8px;margin-bottom:0;font-size:11px;">
+          钉钉群 → 群设置 → 智能群助手 → 添加机器人 → 自定义。安全设置选"加签"或"自定义关键词"。发现新增备案时自动推送通知到群。
         </div>
       </div>
       <div class="section config-section">
@@ -401,16 +403,6 @@
   </div>
 </div>
 
-<div class="modal-mask" id="cronModal">
-  <div class="modal" style="width:680px;">
-    <div class="modal-head"><h3 id="cronModalTitle">📋 命令</h3><span class="close" onclick="document.getElementById('cronModal').classList.remove('show')">&times;</span></div>
-    <div class="modal-body">
-      <p style="margin-bottom:8px;font-size:12px;color:var(--text-3);" id="cronModalDesc"></p>
-      <textarea id="cronText" style="width:100%;height:280px;font-family:monospace;font-size:12px;padding:10px;border:1px solid var(--border);border-radius:5px;" readonly></textarea>
-    </div>
-    <div class="modal-foot"><button class="btn sm" onclick="copyCron()">复制全部</button><button class="btn ghost sm" onclick="document.getElementById('cronModal').classList.remove('show')">关闭</button></div>
-  </div>
-</div>
 
 <div class="modal-mask" id="emailModal">
   <div class="modal" style="width:450px;">
@@ -435,7 +427,7 @@ const SESSION_KEY = 'laingzizhiwang_authed';
 
 const DEFAULT_MONITOR_CONFIG = {
   apihz: { id: '', key: '' },
-  smtp: { host: 'smtp.qiye.aliyun.com', port: 465, encrypt: 'ssl', from_name: '备案监控', user: '', password: '', to: [] },
+  dingtalk: { webhook: '', secret: '', keyword: '备案监控' },
   companies: [
     { name: '圣杰科技', fullName: '内蒙古圣杰科技发展有限公司', enabled: true, lastCount: null, lastCheck: '', hasNew: false },
     { name: '晟锋智联', fullName: '', enabled: true, lastCount: null, lastCheck: '', hasNew: false },
@@ -1085,13 +1077,9 @@ function loadMonitorConfigToForm(){
   const cfg = getMonitorConfig();
   document.getElementById('cfg_apihz_id').value = (cfg.apihz && cfg.apihz.id) || '';
   document.getElementById('cfg_apihz_key').value = (cfg.apihz && cfg.apihz.key) || '';
-  document.getElementById('cfg_smtp_host').value = cfg.smtp.host || '';
-  document.getElementById('cfg_smtp_port').value = cfg.smtp.port || 465;
-  document.getElementById('cfg_smtp_encrypt').value = cfg.smtp.encrypt || 'ssl';
-  document.getElementById('cfg_smtp_from_name').value = cfg.smtp.from_name || '备案监控';
-  document.getElementById('cfg_smtp_user').value = cfg.smtp.user || '';
-  document.getElementById('cfg_smtp_password').value = cfg.smtp.password || '';
-  document.getElementById('cfg_smtp_to').value = (cfg.smtp.to || []).join(', ');
+  document.getElementById('cfg_ding_webhook').value = (cfg.dingtalk && cfg.dingtalk.webhook) || '';
+  document.getElementById('cfg_ding_secret').value = (cfg.dingtalk && cfg.dingtalk.secret) || '';
+  document.getElementById('cfg_ding_keyword').value = (cfg.dingtalk && cfg.dingtalk.keyword) || '备案监控';
   renderCompanyMonitorList(cfg.companies || []);
   renderTimeList(cfg.times || []);
   updateMonitorStats();
@@ -1144,7 +1132,7 @@ function saveMonitorConfig(){
   const oldCfg = getMonitorConfig();
   const cfg = {
     apihz: { id: document.getElementById('cfg_apihz_id').value.trim(), key: document.getElementById('cfg_apihz_key').value.trim() },
-    smtp: { host: document.getElementById('cfg_smtp_host').value.trim(), port: parseInt(document.getElementById('cfg_smtp_port').value) || 465, encrypt: document.getElementById('cfg_smtp_encrypt').value, from_name: document.getElementById('cfg_smtp_from_name').value.trim() || '备案监控', user: document.getElementById('cfg_smtp_user').value.trim(), password: document.getElementById('cfg_smtp_password').value.trim(), to: document.getElementById('cfg_smtp_to').value.split(',').map(s => s.trim()).filter(Boolean) },
+    dingtalk: { webhook: document.getElementById('cfg_ding_webhook').value.trim(), secret: document.getElementById('cfg_ding_secret').value.trim(), keyword: document.getElementById('cfg_ding_keyword').value.trim() || '备案监控' },
     companies: [], times: oldCfg.times || []
   };
   const oldCompanies = oldCfg.companies || [];
@@ -1157,13 +1145,65 @@ function saveMonitorConfig(){
     if (name) cfg.companies.push({ name: name, fullName: fullName, enabled: old.enabled != null ? old.enabled : true, lastCount: old.lastCount != null ? old.lastCount : null, lastCheck: old.lastCheck || '', hasNew: old.hasNew || false });
   });
   if (!cfg.apihz.id || !cfg.apihz.key) { showToast('请填写 apihz 开发者 ID 和 KEY', 'error'); return; }
-  if (!cfg.smtp.user || !cfg.smtp.password) { showToast('请填写发件邮箱和授权码', 'error'); return; }
-  if (cfg.smtp.to.length === 0) { showToast('请填写至少一个收件邮箱', 'error'); return; }
+  if (!cfg.dingtalk.webhook) { showToast('请填写钉钉机器人 Webhook 地址', 'error'); return; }
   if (cfg.companies.length === 0) { showToast('请添加至少一个监控公司', 'error'); return; }
   setMonitorConfig(cfg); showToast('配置已保存', 'success');
 }
 
 function loadDefaultConfig(){ if (!confirm('恢复默认配置？')) return; localStorage.removeItem(MONITOR_CONFIG_KEY); loadMonitorConfigToForm(); showToast('已恢复默认', 'success'); }
+
+// ============ 钉钉群机器人通知 ============
+// 计算加签签名：timestamp + "\n" + secret 的 HMAC-SHA256，再 Base64 + urlencode
+async function dingSign(secret, timestamp){
+  const stringToSign = timestamp + '\n' + secret;
+  const enc = new TextEncoder();
+  const key = await crypto.subtle.importKey('raw', enc.encode(secret), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']);
+  const sig = await crypto.subtle.sign('HMAC', key, enc.encode(stringToSign));
+  const b64 = btoa(String.fromCharCode(...new Uint8Array(sig)));
+  return encodeURIComponent(b64);
+}
+
+// 发送钉钉机器人消息（text 类型）。返回 {success, msg, raw}
+async function sendDingTalk(ding, content){
+  if (!ding || !ding.webhook) return { success: false, msg: '未配置 Webhook' };
+  const keyword = ding.keyword || '备案监控';
+  // 确保内容包含关键词（钉钉自定义关键词安全设置要求）
+  const text = content.includes(keyword) ? content : `${keyword} ${content}`;
+  let url = ding.webhook;
+  try {
+    if (ding.secret) {
+      const timestamp = Date.now();
+      const sign = await dingSign(ding.secret, timestamp);
+      url += (url.includes('&') ? '&' : '?') + `timestamp=${timestamp}&sign=${sign}`;
+    }
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ msgtype: 'text', text: { content: text } })
+    });
+    const data = await res.json();
+    if (data.errcode === 0) return { success: true, msg: '发送成功', raw: data };
+    return { success: false, msg: data.errmsg || ('errcode:' + data.errcode), raw: data };
+  } catch(e) {
+    return { success: false, msg: '网络错误: ' + e.message };
+  }
+}
+
+// 测试钉钉通知
+async function testDingTalk(){
+  saveMonitorConfig();
+  const cfg = getMonitorConfig();
+  if (!cfg.dingtalk.webhook) { showToast('请先填写 Webhook 地址', 'error'); return; }
+  const btn = event ? event.target : null;
+  if (btn) { btn.disabled = true; btn.textContent = '发送中...'; }
+  const r = await sendDingTalk(cfg.dingtalk, `【${cfg.dingtalk.keyword || '备案监控'}】测试通知：钉钉机器人配置正常 ✓\n时间：${new Date().toLocaleString('zh-CN', { hour12: false })}`);
+  if (btn) { btn.disabled = false; btn.textContent = '📨 测试钉钉通知'; }
+  if (r.success) {
+    showToast('测试消息已发送到钉钉群', 'success');
+  } else {
+    showToast('发送失败：' + r.msg, 'error');
+  }
+}
 
 // ============ apihz 备案数量检测 ============
 let _checking = false;
@@ -1195,6 +1235,7 @@ async function runCheckAll(){
   const btn = event ? event.target : null;
   if (btn) { btn.disabled = true; btn.textContent = '检测中...'; }
   let hasAnyNew = false;
+  const newItems = []; // 记录有新增的公司，用于钉钉通知
   try {
     for (const x of targets) {
       const r = await checkOneCompany(x.c, cfg.apihz);
@@ -1203,7 +1244,10 @@ async function runCheckAll(){
         const prev = x.c.lastCount;
         x.c.lastCount = r.total;
         x.c.lastCheck = now;
-        if (prev != null && r.total > prev) { x.c.hasNew = true; hasAnyNew = true; }
+        if (prev != null && r.total > prev) {
+          x.c.hasNew = true; hasAnyNew = true;
+          newItems.push(`${x.c.name}（${x.c.fullName || x.c.name}）：${prev} → ${r.total}，新增 ${r.total - prev} 个`);
+        }
         else if (prev == null) { x.c.hasNew = false; }
       } else {
         x.c.lastCheck = now + ' 失败';
@@ -1213,83 +1257,21 @@ async function runCheckAll(){
       renderCompanyMonitorList(cfg.companies);
       if (x !== targets[targets.length - 1]) await new Promise(r => setTimeout(r, 2000));
     }
-    if (hasAnyNew) showToast('检测完成，发现新增备案！', 'success');
-    else showToast('检测完成，无新增', 'success');
+    if (hasAnyNew) {
+      showToast('检测完成，发现新增备案！正在推送钉钉通知...', 'success');
+      // 推送钉钉群通知
+      const keyword = cfg.dingtalk.keyword || '备案监控';
+      const content = `【${keyword}】发现新增小程序备案！\n检测时间：${new Date().toLocaleString('zh-CN', { hour12: false })}\n\n${newItems.join('\n')}\n\n请及时登录系统查看详情。`;
+      const dr = await sendDingTalk(cfg.dingtalk, content);
+      if (dr.success) showToast('检测完成，钉钉通知已推送', 'success');
+      else showToast('检测完成，但钉钉通知失败：' + dr.msg, 'error');
+    } else {
+      showToast('检测完成，无新增', 'success');
+    }
   } finally {
     _checking = false;
     if (btn) { btn.disabled = false; btn.textContent = '立即检测'; }
   }
-}
-
-function buildConfigJSON(){
-  const cfg = getMonitorConfig();
-  return { _说明: "小程序备案监控配置", smtp: { host: cfg.smtp.host, port: cfg.smtp.port, use_ssl: cfg.smtp.encrypt === 'ssl', use_tls: cfg.smtp.encrypt === 'tls', user: cfg.smtp.user, password: cfg.smtp.password, from_name: cfg.smtp.from_name, to: cfg.smtp.to }, companies: cfg.companies.map(c => ({ name: c.name, enabled: c.enabled })), times: cfg.times };
-}
-
-function exportMonitorConfig(){
-  saveMonitorConfig();
-  const blob = new Blob([JSON.stringify(buildConfigJSON(), null, 2)], { type: 'application/json' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a'); a.href = url; a.download = 'config.json'; a.click();
-  URL.revokeObjectURL(url); showToast('config.json 已导出', 'success'); showCronCommand();
-}
-
-function showCronCommand(){
-  const cfg = getMonitorConfig();
-  const times = cfg.times || [];
-  const lines = times.map(t => { const [h, m] = t.split(':'); return `${parseInt(m)} ${parseInt(h)} * * * /usr/bin/python3 /www/filing-monitor/monitor.py >> /www/filing-monitor/cron.log 2>&1`; });
-  lines.push(`# 每天早上 9:00 检查预计审核通过`);
-  lines.push(`0 9 * * * /usr/bin/python3 /www/filing-monitor/monitor.py --check-expected >> /www/filing-monitor/cron.log 2>&1`);
-  const text = `# 小程序备案监控 - 每天 ${times.length} 次 + 1 次预计审核提醒\n# 在服务器执行 crontab -e 后粘贴\n\n` + lines.join('\n');
-  document.getElementById('cronModalTitle').textContent = '📋 Cron 定时任务命令';
-  document.getElementById('cronModalDesc').textContent = '在服务器执行 crontab -e 后粘贴以下内容：';
-  document.getElementById('cronText').value = text;
-  document.getElementById('cronModal').classList.add('show');
-}
-
-function copyCron(){ const t = document.getElementById('cronText'); t.select(); navigator.clipboard.writeText(t.value).then(() => showToast('已复制', 'success')); }
-
-function exportRecordsForMonitor(){
-  const all = getAllRecords().map(r => { const clean = {}; COLS.forEach(c => { clean[c.key] = r[c.key]; }); return clean; });
-  const blob = new Blob([JSON.stringify(all, null, 2)], { type: 'application/json' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a'); a.href = url; a.download = 'records.json'; a.click();
-  URL.revokeObjectURL(url); showToast('records.json 已导出', 'success');
-}
-
-function importMonitorConfig(event){
-  const file = event.target.files[0]; if (!file) return;
-  const reader = new FileReader();
-  reader.onload = e => {
-    try {
-      const imported = JSON.parse(e.target.result);
-      const companies = (imported.companies || []).map(c => typeof c === 'string' ? { name: c, enabled: true } : { name: c.name, enabled: c.enabled !== false });
-      const cfg = { smtp: { host: imported.smtp.host, port: imported.smtp.port || 465, encrypt: imported.smtp.use_ssl ? 'ssl' : (imported.smtp.use_tls ? 'tls' : 'none'), from_name: imported.smtp.from_name || '备案监控', user: imported.smtp.user || '', password: imported.smtp.password || '', to: imported.smtp.to || [] }, companies: companies, times: imported.times || ['11:00', '13:00', '15:00', '18:00', '20:00'] };
-      setMonitorConfig(cfg); loadMonitorConfigToForm(); showToast('配置已导入', 'success');
-    } catch(err) { showToast('配置文件格式错误', 'error'); }
-  };
-  reader.readAsText(file); event.target.value = '';
-}
-
-function showTestMailCmd(){
-  const cmd = `# 在服务器执行测试邮件发送:
-cd /www/filing-monitor
-python3 -c "
-import smtplib, json
-from email.mime.text import MIMEText
-cfg = json.load(open('config.json'))['smtp']
-msg = MIMEText('测试邮件', 'plain', 'utf-8')
-msg['Subject'] = '【备案监控】测试'
-msg['From'] = cfg['user']; msg['To'] = ','.join(cfg['to'])
-server = smtplib.SMTP_SSL(cfg['host'], cfg['port']) if cfg.get('use_ssl') else smtplib.SMTP(cfg['host'], cfg['port'])
-if cfg.get('use_tls'): server.starttls()
-server.login(cfg['user'], cfg['password']); server.sendmail(cfg['user'], cfg['to'], msg.as_string()); server.quit()
-print('邮件已发送')
-"`;
-  document.getElementById('cronModalTitle').textContent = '📨 测试邮件命令';
-  document.getElementById('cronModalDesc').textContent = '在服务器执行以下命令验证邮箱配置：';
-  document.getElementById('cronText').value = cmd;
-  document.getElementById('cronModal').classList.add('show');
 }
 
 function showToast(msg, type){ const t = document.getElementById('toast'); t.textContent = msg; t.className = 'toast show ' + (type || ''); setTimeout(() => t.className = 'toast', 2000); }
