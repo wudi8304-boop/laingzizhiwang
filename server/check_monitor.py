@@ -167,11 +167,9 @@ def main():
     new_lines = []
     has_any_new = False
 
-    for c in targets:
+    # 处理单次检测结果：返回 True=成功 False=失败
+    def handle_result(c, ok, total, lst, now_str):
         main_name = c.get('fullName') or c.get('name', '')
-        ok, total, lst, msg = query_apihz(apihz, main_name)
-        now_str = now.strftime('%Y-%m-%d %H:%M:%S')
-
         if ok:
             prev = c.get('lastCount')
             prev_keys = c.get('lastKeys') if isinstance(c.get('lastKeys'), list) else []
@@ -181,29 +179,29 @@ def main():
             c['lastKeys'] = cur_keys
             c['lastCheck'] = now_str
             if prev is not None and total > prev:
-                # 有历史且数量增加 → 找出新增明细
                 added = [it for it in cur_items if ('%s|%s' % (it[0], it[1])) not in prev_keys]
                 if added:
                     c['hasNew'] = True
+                    nonlocal has_any_new
                     has_any_new = True
                     new_lines.append('【%s】新增 %d 个小程序：' % (c.get('name') or main_name, len(added)))
                     for idx, (n, i) in enumerate(added, 1):
                         label = n or i or '未命名'
                         new_lines.append('  %d. %s%s' % (idx, label, ('（%s）' % i) if i else ''))
             elif prev is not None:
-                # 数量没增加，但检查是否有新 item（替换场景）
                 added = [it for it in cur_items if ('%s|%s' % (it[0], it[1])) not in prev_keys]
                 if added:
                     c['hasNew'] = True
+                    nonlocal has_any_new
                     has_any_new = True
                     new_lines.append('【%s】发现 %d 个新小程序：' % (c.get('name') or main_name, len(added)))
                     for idx, (n, i) in enumerate(added, 1):
                         label = n or i or '未命名'
                         new_lines.append('  %d. %s%s' % (idx, label, ('（%s）' % i) if i else ''))
             elif prev is None:
-                # 首次检测：把所有当前小程序当作新增，推送完整明细
                 if cur_items:
                     c['hasNew'] = True
+                    nonlocal has_any_new
                     has_any_new = True
                     new_lines.append('【%s】首次纳入监控，当前共 %d 个小程序：' % (c.get('name') or main_name, len(cur_items)))
                     for idx, (n, i) in enumerate(cur_items, 1):
@@ -212,11 +210,39 @@ def main():
                 else:
                     c['hasNew'] = False
             log('  %s: 查询成功，当前%d个' % (c.get('name') or main_name, total))
+            return True
         else:
-            # 失败也记录时间，不更新数量，不算新增，不重试
-            c['lastCheck'] = now_str + ' 失败'
-            log('  %s: 查询失败 - %s' % (c.get('name') or main_name, msg))
-        time.sleep(2)  # 请求间隔，避免触发频控
+            return False  # 失败：不更新数量，不记录时间，等待重试
+
+    # 第一轮：逐个检测，失败的加入重试列表
+    failed_list = []
+    for c in targets:
+        main_name = c.get('fullName') or c.get('name', '')
+        ok, total, lst, msg = query_apihz(apihz, main_name)
+        now_str = now.strftime('%Y-%m-%d %H:%M:%S')
+        success = handle_result(c, ok, total, lst, now_str)
+        if not success:
+            failed_list.append((c, msg))
+        if c is not targets[-1]:
+            time.sleep(2)
+
+    # 第二轮：对失败的公司重新查一次
+    if failed_list:
+        log('第一轮 %d 家失败，2秒后重试...' % len(failed_list))
+        time.sleep(2)
+        still_failed = []
+        for c, _ in failed_list:
+            main_name = c.get('fullName') or c.get('name', '')
+            ok, total, lst, msg = query_apihz(apihz, main_name)
+            now_str = now.strftime('%Y-%m-%d %H:%M:%S')
+            success = handle_result(c, ok, total, lst, now_str)
+            if not success:
+                still_failed.append(c.get('name') or main_name)
+                c['lastCheck'] = now_str + ' 失败'
+            if c is not failed_list[-1][0]:
+                time.sleep(2)
+        if still_failed:
+            log('  仍失败：%s' % '、'.join(still_failed))
 
     # 回写配置
     write_json(MONITOR_FILE, cfg)
