@@ -442,6 +442,46 @@ const DEFAULT_MONITOR_CONFIG = {
   times: ['11:00', '13:00', '15:00', '18:00', '20:00']
 };
 
+// ============ 跨设备配置同步（后端API + 本地降级） ============
+// 邮箱与监控配置通过后端 API 持久化，实现多设备同步；
+// 后端不可用时（如本地预览）自动降级到 localStorage。
+const API_TOKEN = ACCESS_PASSWORD;
+let _useApi = false;            // 后端是否可用
+let _emailsCache = null;        // 邮箱内存缓存
+let _monitorCache = null;       // 监控配置内存缓存
+
+async function apiGet(path){
+  const r = await fetch(path, { headers: { 'X-Auth': API_TOKEN } });
+  if (!r.ok) throw new Error('API ' + r.status);
+  const d = await r.json();
+  return d.data;
+}
+async function apiPost(path, data){
+  const r = await fetch(path, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'X-Auth': API_TOKEN },
+    body: JSON.stringify({ data: data })
+  });
+  if (!r.ok) throw new Error('API ' + r.status);
+}
+// 启动时加载远程配置；后端不可用则降级到 localStorage
+async function initRemoteConfig(){
+  try {
+    const [emails, monitor] = await Promise.all([apiGet('/api/emails'), apiGet('/api/monitor')]);
+    _emailsCache = Array.isArray(emails) ? emails : [];
+    _monitorCache = monitor || JSON.parse(JSON.stringify(DEFAULT_MONITOR_CONFIG));
+    _useApi = true;
+    // 同步到本地作为离线缓存
+    localStorage.setItem(EMAIL_STORAGE_KEY, JSON.stringify(_emailsCache));
+    localStorage.setItem(MONITOR_CONFIG_KEY, JSON.stringify(_monitorCache));
+  } catch(e) {
+    console.warn('后端不可用，使用本地存储:', e.message);
+    _emailsCache = (() => { try { return JSON.parse(localStorage.getItem(EMAIL_STORAGE_KEY) || '[]'); } catch(_) { return []; } })();
+    _monitorCache = (() => { try { return JSON.parse(localStorage.getItem(MONITOR_CONFIG_KEY) || 'null') || JSON.parse(JSON.stringify(DEFAULT_MONITOR_CONFIG)); } catch(_) { return JSON.parse(JSON.stringify(DEFAULT_MONITOR_CONFIG)); } })();
+    _useApi = false;
+  }
+}
+
 const COLS = [
   { key: 'companyName', label: '公司', type: 'text', sortable: true, form: { type: 'select', options: ['', '圣杰科技', '晟锋智联', '追影科技', '伴戏科技', '暖剧科技', '张家口乐强农业科技', '京宝芯联科技', '智承万兴科技', '文智化贤'] } },
   { key: 'miniProgramName', label: '小程序名称', type: 'copy', sortable: true, form: { type: 'text' } },
@@ -469,7 +509,7 @@ function doLogin(){
   else { document.getElementById('loginErr').textContent = '密码错误'; document.getElementById('loginPwd').value = ''; }
 }
 function logout(){ sessionStorage.removeItem(SESSION_KEY); location.reload(); }
-function showApp(){ document.getElementById('loginMask').style.display = 'none'; document.getElementById('layout').style.display = 'flex'; init(); }
+async function showApp(){ document.getElementById('loginMask').style.display = 'none'; document.getElementById('layout').style.display = 'flex'; await initRemoteConfig(); init(); }
 function checkAuth(){ if (sessionStorage.getItem(SESSION_KEY) === '1') showApp(); }
 
 function switchPage(name){
@@ -887,8 +927,12 @@ function exportJSON(){
 }
 
 // ============ 邮箱列表 ============
-function getEmails(){ try { return JSON.parse(localStorage.getItem(EMAIL_STORAGE_KEY) || '[]'); } catch(e) { return []; } }
-function setEmails(arr){ localStorage.setItem(EMAIL_STORAGE_KEY, JSON.stringify(arr)); }
+function getEmails(){ return _emailsCache || []; }
+function setEmails(arr){
+  _emailsCache = arr;
+  localStorage.setItem(EMAIL_STORAGE_KEY, JSON.stringify(arr));   // 本地离线缓存
+  if (_useApi) apiPost('/api/emails', arr).catch(e => console.warn('保存邮箱到后端失败:', e.message));  // 跨设备同步
+}
 
 // 未被小程序使用的邮箱（用于新增小程序时搜索选择）
 function getUnusedEmails(){
@@ -1070,8 +1114,12 @@ function renderDashboard(){
 }
 
 // ============ 监控配置 ============
-function getMonitorConfig(){ try { return JSON.parse(localStorage.getItem(MONITOR_CONFIG_KEY) || 'null') || JSON.parse(JSON.stringify(DEFAULT_MONITOR_CONFIG)); } catch(e) { return JSON.parse(JSON.stringify(DEFAULT_MONITOR_CONFIG)); } }
-function setMonitorConfig(cfg){ localStorage.setItem(MONITOR_CONFIG_KEY, JSON.stringify(cfg)); }
+function getMonitorConfig(){ return _monitorCache || JSON.parse(JSON.stringify(DEFAULT_MONITOR_CONFIG)); }
+function setMonitorConfig(cfg){
+  _monitorCache = cfg;
+  localStorage.setItem(MONITOR_CONFIG_KEY, JSON.stringify(cfg));   // 本地离线缓存
+  if (_useApi) apiPost('/api/monitor', cfg).catch(e => console.warn('保存监控配置到后端失败:', e.message));  // 跨设备同步
+}
 
 function loadMonitorConfigToForm(){
   const cfg = getMonitorConfig();
@@ -1150,7 +1198,7 @@ function saveMonitorConfig(){
   setMonitorConfig(cfg); showToast('配置已保存', 'success');
 }
 
-function loadDefaultConfig(){ if (!confirm('恢复默认配置？')) return; localStorage.removeItem(MONITOR_CONFIG_KEY); loadMonitorConfigToForm(); showToast('已恢复默认', 'success'); }
+function loadDefaultConfig(){ if (!confirm('恢复默认配置？')) return; _monitorCache = JSON.parse(JSON.stringify(DEFAULT_MONITOR_CONFIG)); localStorage.setItem(MONITOR_CONFIG_KEY, JSON.stringify(_monitorCache)); if (_useApi) apiPost('/api/monitor', _monitorCache).catch(()=>{}); loadMonitorConfigToForm(); showToast('已恢复默认', 'success'); }
 
 // ============ 钉钉群机器人通知 ============
 // 计算加签签名：timestamp + "\n" + secret 的 HMAC-SHA256，再 Base64 + urlencode
