@@ -20,7 +20,13 @@
 import json
 import os
 import urllib.parse
-from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from http.server import BaseHTTPRequestHandler, HTTPServer
+from socketserver import ThreadingMixIn
+
+
+# 兼容 Python 3.6 及更早版本（无 ThreadingHTTPServer）
+class ThreadingHTTPServer(ThreadingMixIn, HTTPServer):
+    pass
 
 # ============ 配置 ============
 HOST = '127.0.0.1'
