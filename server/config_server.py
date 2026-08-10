@@ -35,6 +35,7 @@ ACCESS_TOKEN = 'wudi2026'
 DATA_DIR = '/www/laingzizhiwang-data'
 EMAILS_FILE = os.path.join(DATA_DIR, 'emails.json')
 MONITOR_FILE = os.path.join(DATA_DIR, 'monitor.json')
+RECORDS_FILE = os.path.join(DATA_DIR, 'records.json')   # 检测历史记录
 
 # ============ 工具函数 ============
 def ensure_data_dir():
@@ -104,6 +105,8 @@ class Handler(BaseHTTPRequestHandler):
             self._send(200, {'data': read_json(EMAILS_FILE, [])})
         elif path == '/api/monitor':
             self._send(200, {'data': read_json(MONITOR_FILE, None)})
+        elif path == '/api/records':
+            self._send(200, {'data': read_json(RECORDS_FILE, {})})
         else:
             self._send(404, {'error': 'unknown endpoint'})
 
@@ -126,6 +129,10 @@ class Handler(BaseHTTPRequestHandler):
             comps = data.get('companies', []) if isinstance(data, dict) else []
             times = data.get('times', []) if isinstance(data, dict) else []
             log('保存监控配置 公司%d 时间%s' % (len(comps), times))
+            self._send(200, {'ok': True})
+        elif path == '/api/records':
+            write_json(RECORDS_FILE, data)
+            log('保存检测记录 %d 家公司' % (len(data) if isinstance(data, dict) else 0))
             self._send(200, {'ok': True})
         else:
             self._send(404, {'error': 'unknown endpoint'})

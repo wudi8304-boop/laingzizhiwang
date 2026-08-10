@@ -7,12 +7,16 @@
 1. 读取监控配置 monitor.json
 2. 判断当前 HH:MM 是否命中 cfg.times
 3. 防重复：同一 (日期, 时间点) 只执行一次（last_run.json）
-4. 对每家启用的公司检测一次（成功失败都只检测1次，失败不重试不扣费）
-5. 发现新增小程序时推送钉钉通知（含名称+备案号）
-6. 回写 monitor.json（lastCount/lastCheck/hasNew/lastKeys）
+4. 读取 records.json（每家公司的上次检测明细）
+5. 对每家启用的公司检测一次，失败跳过，全部完成后对失败的再查一次
+6. 比对本次结果与 records.json 中的上次明细，找出新增小程序
+7. 有新增则推送钉钉通知（含名称+备案号）
+8. 更新 records.json（本次明细作为下次的比对基准）
+
+新公司默认 items 为空，首次检测出的全部小程序都算新增。
 
 cron 配置（每分钟执行）：
-  * * * * * /usr/bin/python3 /www/laingzizhiwang-site/server/check_monitor.py >> /www/monitor-check.log 2>&1
+  * * * * * /usr/bin/python3 /www/laingzizhiwang/server/check_monitor.py >> /www/monitor-check.log 2>&1
 """
 import json
 import os
@@ -28,6 +32,7 @@ from datetime import datetime
 # ============ 配置 ============
 DATA_DIR = '/www/laingzizhiwang-data'
 MONITOR_FILE = os.path.join(DATA_DIR, 'monitor.json')
+RECORDS_FILE = os.path.join(DATA_DIR, 'records.json')   # {公司名: {items: [...], lastCheck: '', lastCount: 0}}
 LAST_RUN_FILE = os.path.join(DATA_DIR, 'last_run.json')
 APIHZ_URL = 'https://cn.apihz.cn/api/wangzhan/syicpxcx.php'
 DINGTALK_PROXY = 'http://127.0.0.1:8080/ding-proxy/robot/send'
@@ -79,7 +84,6 @@ def send_dingtalk(ding, content):
         return False, '未配置 Webhook'
     keyword = ding.get('keyword') or '备案监控'
     text = content if keyword in content else ('%s %s' % (keyword, content))
-    # 提取 access_token
     m = None
     try:
         import re
@@ -131,6 +135,10 @@ def extract_item(d):
     icp = d.get('icp') or d.get('beian') or d.get('record') or d.get('beianhao') or d.get('icpNo') or ''
     return name, icp
 
+def item_key(name, icp):
+    """生成唯一标识"""
+    return '%s|%s' % (name, icp)
+
 # ============ 主流程 ============
 def main():
     cfg = read_json(MONITOR_FILE, None)
@@ -149,7 +157,7 @@ def main():
     # 防重复：同一 (日期, 时间点) 只执行一次
     last = read_json(LAST_RUN_FILE, {})
     if last.get('date') == today and last.get('time') == current_hm:
-        return  # 今天该时间点已执行过
+        return
     log('命中检测时间 %s，开始执行' % current_hm)
 
     apihz = cfg.get('apihz', {}) or {}
@@ -163,56 +171,45 @@ def main():
         log('无启用的公司，退出')
         return
 
+    # 读取历史检测记录（每家公司的上次 items）
+    records = read_json(RECORDS_FILE, {})
+    if not isinstance(records, dict):
+        records = {}
+
     log('开始检测 %d 家公司' % len(targets))
     new_lines = []
-    has_any_new = False
+    state = {'has_new': False}  # 用 dict 包装，避免 nonlocal 作用域问题
 
-    # 处理单次检测结果：返回 True=成功 False=失败
     def handle_result(c, ok, total, lst, now_str):
+        """处理单次检测结果，返回 True=成功 False=失败"""
         main_name = c.get('fullName') or c.get('name', '')
+        cname = c.get('name') or main_name
         if ok:
-            prev = c.get('lastCount')
-            prev_keys = c.get('lastKeys') if isinstance(c.get('lastKeys'), list) else []
+            # 提取本次所有小程序
             cur_items = [extract_item(d) for d in lst]
-            cur_keys = ['%s|%s' % (n, i) for (n, i) in cur_items]
+            cur_keys = [item_key(n, i) for (n, i) in cur_items]
+            # 读取上次记录（新公司默认 items 为空）
+            prev_rec = records.get(cname, {})
+            prev_items = prev_rec.get('items', []) if isinstance(prev_rec, dict) else []
+            prev_keys = [item_key(n, i) for (n, i) in prev_items]
+            # 找出新增（本次有但上次没有）
+            added = [(n, i) for (n, i) in cur_items if item_key(n, i) not in prev_keys]
+            if added:
+                state['has_new'] = True
+                new_lines.append('【%s】新增 %d 个小程序：' % (cname, len(added)))
+                for idx, (n, i) in enumerate(added, 1):
+                    label = n or i or '未命名'
+                    new_lines.append('  %d. %s%s' % (idx, label, ('（%s）' % i) if i else ''))
+            # 更新记录（本次作为下次的基准）
+            records[cname] = {'items': cur_items, 'lastCheck': now_str, 'lastCount': total}
+            # 同步更新 monitor.json 里的显示状态
             c['lastCount'] = total
-            c['lastKeys'] = cur_keys
             c['lastCheck'] = now_str
-            if prev is not None and total > prev:
-                added = [it for it in cur_items if ('%s|%s' % (it[0], it[1])) not in prev_keys]
-                if added:
-                    c['hasNew'] = True
-                    nonlocal has_any_new
-                    has_any_new = True
-                    new_lines.append('【%s】新增 %d 个小程序：' % (c.get('name') or main_name, len(added)))
-                    for idx, (n, i) in enumerate(added, 1):
-                        label = n or i or '未命名'
-                        new_lines.append('  %d. %s%s' % (idx, label, ('（%s）' % i) if i else ''))
-            elif prev is not None:
-                added = [it for it in cur_items if ('%s|%s' % (it[0], it[1])) not in prev_keys]
-                if added:
-                    c['hasNew'] = True
-                    nonlocal has_any_new
-                    has_any_new = True
-                    new_lines.append('【%s】发现 %d 个新小程序：' % (c.get('name') or main_name, len(added)))
-                    for idx, (n, i) in enumerate(added, 1):
-                        label = n or i or '未命名'
-                        new_lines.append('  %d. %s%s' % (idx, label, ('（%s）' % i) if i else ''))
-            elif prev is None:
-                if cur_items:
-                    c['hasNew'] = True
-                    nonlocal has_any_new
-                    has_any_new = True
-                    new_lines.append('【%s】首次纳入监控，当前共 %d 个小程序：' % (c.get('name') or main_name, len(cur_items)))
-                    for idx, (n, i) in enumerate(cur_items, 1):
-                        label = n or i or '未命名'
-                        new_lines.append('  %d. %s%s' % (idx, label, ('（%s）' % i) if i else ''))
-                else:
-                    c['hasNew'] = False
-            log('  %s: 查询成功，当前%d个' % (c.get('name') or main_name, total))
+            c['hasNew'] = len(added) > 0
+            log('  %s: 查询成功，当前%d个，新增%d个' % (cname, total, len(added)))
             return True
         else:
-            return False  # 失败：不更新数量，不记录时间，等待重试
+            return False  # 失败：不更新记录，等待重试
 
     # 第一轮：逐个检测，失败的加入重试列表
     failed_list = []
@@ -244,12 +241,16 @@ def main():
         if still_failed:
             log('  仍失败：%s' % '、'.join(still_failed))
 
-    # 回写配置
+    # 回写 records.json（本次结果作为下次比对基准）
+    write_json(RECORDS_FILE, records)
+    log('检测记录已回写 records.json')
+
+    # 回写 monitor.json（更新显示状态）
     write_json(MONITOR_FILE, cfg)
-    log('监控配置已回写')
+    log('监控配置已回写 monitor.json')
 
     # 有新增则推送钉钉（含名称和备案号）
-    if has_any_new:
+    if state['has_new']:
         keyword = cfg.get('dingtalk', {}).get('keyword') or '备案监控'
         content = '【%s】发现新增小程序备案！\n检测时间：%s\n\n%s\n\n请及时登录系统查看详情。' % (
             keyword,
@@ -265,7 +266,7 @@ def main():
     else:
         log('检测完成，无新增')
 
-    # 记录本次执行（无论是否有新增）
+    # 记录本次执行
     write_json(LAST_RUN_FILE, {'date': today, 'time': current_hm})
     log('执行完成，标记 %s %s 已执行' % (today, current_hm))
 

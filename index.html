@@ -1324,54 +1324,48 @@ async function runCheckAll(){
   let hasAnyNew = false;
   const newDetailLines = []; // 记录新增小程序的明细，用于钉钉通知
 
+  // 读取历史检测记录（每家公司的上次 items），新公司默认 items 为空
+  let records = {};
+  if (_useApi) {
+    try { records = await apiGet('/api/records') || {}; } catch(e) { console.warn('读取records失败:', e.message); }
+  }
+  if (!records || typeof records !== 'object') records = {};
+
   // 处理单次检测结果：返回 true=成功 false=失败
   function handleResult(x, r){
     const now = new Date().toLocaleString('zh-CN', { hour12: false });
     if (r.success) {
-      const prev = x.c.lastCount;
-      const prevKeys = Array.isArray(x.c.lastKeys) ? x.c.lastKeys : [];
+      // 提取本次所有小程序
       const curItems = (r.list || []).map(d => {
         const name = d.name || d.xcxname || d.title || d.appname || d.app_name || d.nickName || d.nickname || d.miniProgramName || '';
         const icp = d.icp || d.beian || d.record || d.beianhao || d.icpNo || '';
         return { name: name, icp: icp };
       });
       const curKeys = curItems.map(it => (it.name + '|' + it.icp));
-      x.c.lastCount = r.total;
-      x.c.lastKeys = curKeys;
-      x.c.lastCheck = now;
-      if (prev != null && r.total > prev) {
-        const added = curItems.filter(it => !prevKeys.includes(it.name + '|' + it.icp));
-        if (added.length > 0) {
-          x.c.hasNew = true; hasAnyNew = true;
-          newDetailLines.push(`【${x.c.name}】新增 ${added.length} 个小程序：`);
-          added.forEach((it, idx) => {
-            const label = it.name || it.icp || '未命名';
-            newDetailLines.push(`  ${idx + 1}. ${label}${it.icp ? '（' + it.icp + '）' : ''}`);
-          });
-        }
-      } else if (prev != null && curItems.some(it => !prevKeys.includes(it.name + '|' + it.icp))) {
-        const added = curItems.filter(it => !prevKeys.includes(it.name + '|' + it.icp));
-        if (added.length > 0) {
-          x.c.hasNew = true; hasAnyNew = true;
-          newDetailLines.push(`【${x.c.name}】发现 ${added.length} 个新小程序：`);
-          added.forEach((it, idx) => {
-            const label = it.name || it.icp || '未命名';
-            newDetailLines.push(`  ${idx + 1}. ${label}${it.icp ? '（' + it.icp + '）' : ''}`);
-          });
-        }
-      } else if (prev == null) {
-        x.c.hasNew = curItems.length > 0; hasAnyNew = hasAnyNew || curItems.length > 0;
-        if (curItems.length > 0) {
-          newDetailLines.push(`【${x.c.name}】首次纳入监控，当前共 ${curItems.length} 个小程序：`);
-          curItems.forEach((it, idx) => {
-            const label = it.name || it.icp || '未命名';
-            newDetailLines.push(`  ${idx + 1}. ${label}${it.icp ? '（' + it.icp + '）' : ''}`);
-          });
-        }
+      // 读取上次记录（新公司默认 items 为空）
+      const prevRec = records[x.c.name] || {};
+      const prevItems = Array.isArray(prevRec.items) ? prevRec.items : [];
+      const prevKeys = prevItems.map(it => (it.name + '|' + it.icp));
+      // 找出新增（本次有但上次没有）
+      const added = curItems.filter(it => !prevKeys.includes(it.name + '|' + it.icp));
+      if (added.length > 0) {
+        x.c.hasNew = true; hasAnyNew = true;
+        newDetailLines.push(`【${x.c.name}】新增 ${added.length} 个小程序：`);
+        added.forEach((it, idx) => {
+          const label = it.name || it.icp || '未命名';
+          newDetailLines.push(`  ${idx + 1}. ${label}${it.icp ? '（' + it.icp + '）' : ''}`);
+        });
+      } else {
+        x.c.hasNew = false;
       }
+      // 更新记录（本次作为下次的基准）
+      records[x.c.name] = { items: curItems, lastCheck: now, lastCount: r.total };
+      // 同步更新 monitor 配置的显示状态
+      x.c.lastCount = r.total;
+      x.c.lastCheck = now;
       return true;
     } else {
-      return false;  // 失败：不更新数量，不记录时间，等待重试
+      return false;  // 失败：不更新记录，等待重试
     }
   }
 
@@ -1406,6 +1400,11 @@ async function runCheckAll(){
       if (stillFailed.length > 0) {
         showToast(`${stillFailed.length} 家公司检测失败：${stillFailed.map(x => x.c.name).join('、')}`, 'error');
       }
+    }
+
+    // 回写 records.json（本次结果作为下次比对基准）
+    if (_useApi) {
+      try { await apiPost('/api/records', records); } catch(e) { console.warn('保存records失败:', e.message); }
     }
 
     if (hasAnyNew) {
