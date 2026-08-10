@@ -150,7 +150,14 @@ def main():
     now = datetime.now()
     current_hm = now.strftime('%H:%M')
     today = now.strftime('%Y-%m-%d')
-    times = cfg.get('times', []) or []
+    # 兼容 HH:MM:SS（部分浏览器 time 输入会带秒），统一成 HH:MM 再比对
+    times = []
+    for t in (cfg.get('times', []) or []):
+        s = str(t).strip()
+        if len(s) >= 5 and s[2] == ':':
+            s = s[:5]
+        if s and s not in times:
+            times.append(s)
     if current_hm not in times:
         return  # 当前分钟不在检测时间，静默退出
 

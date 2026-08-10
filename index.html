@@ -1141,7 +1141,13 @@ function loadMonitorConfigToForm(){
   document.getElementById('cfg_ding_secret').value = (cfg.dingtalk && cfg.dingtalk.secret) || '';
   document.getElementById('cfg_ding_keyword').value = (cfg.dingtalk && cfg.dingtalk.keyword) || '备案监控';
   renderCompanyMonitorList(cfg.companies || []);
-  renderTimeList(cfg.times || []);
+  // 加载时规范化历史时间（兼容旧配置里的 HH:MM:SS）
+  const times = normalizeTimes(cfg.times || []);
+  if (JSON.stringify(times) !== JSON.stringify(cfg.times || [])) {
+    cfg.times = times;
+    setMonitorConfig(cfg);
+  }
+  renderTimeList(times);
   updateMonitorStats();
 }
 
@@ -1182,10 +1188,37 @@ function updateMonitorStats(){ const cfg = getMonitorConfig(); const total = cfg
 function addCompany(){ const cfg = getMonitorConfig(); cfg.companies.push({ name: '', fullName: '', enabled: true, lastCount: null, lastCheck: '', hasNew: false }); setMonitorConfig(cfg); renderCompanyMonitorList(cfg.companies); updateMonitorStats(); }
 function removeCompany(idx){ if (!confirm('确认删除该公司？')) return; const cfg = getMonitorConfig(); cfg.companies.splice(idx, 1); setMonitorConfig(cfg); renderCompanyMonitorList(cfg.companies); updateMonitorStats(); }
 
+// 统一成 HH:MM，避免 <input type="time"> 在部分浏览器返回 HH:MM:SS 导致与 cron 对不上
+function normalizeTimeHM(t){
+  if (!t) return '';
+  const m = String(t).trim().match(/^(\d{1,2}):(\d{2})(?::\d{2})?$/);
+  if (!m) return String(t).trim();
+  return String(m[1]).padStart(2, '0') + ':' + m[2];
+}
+function normalizeTimes(times){
+  const out = [];
+  (times || []).forEach(t => {
+    const n = normalizeTimeHM(t);
+    if (n && !out.includes(n)) out.push(n);
+  });
+  out.sort();
+  return out;
+}
 function renderTimeList(times){
   document.getElementById('timeList').innerHTML = times.map((t, i) => `<div class="time-item"><span>⏰ ${esc(t)}</span><span class="remove" onclick="removeTime(${i})">×</span></div>`).join('');
 }
-function addTime(){ const t = document.getElementById('newTime').value; if (!t) { showToast('请选择时间', 'error'); return; } const cfg = getMonitorConfig(); if (cfg.times.includes(t)) { showToast('该时间已存在', 'error'); return; } cfg.times.push(t); cfg.times.sort(); setMonitorConfig(cfg); renderTimeList(cfg.times); document.getElementById('newTime').value = '12:00'; }
+function addTime(){
+  const t = normalizeTimeHM(document.getElementById('newTime').value);
+  if (!t) { showToast('请选择时间', 'error'); return; }
+  const cfg = getMonitorConfig();
+  cfg.times = normalizeTimes(cfg.times || []);
+  if (cfg.times.includes(t)) { showToast('该时间已存在', 'error'); return; }
+  cfg.times.push(t);
+  cfg.times.sort();
+  setMonitorConfig(cfg);
+  renderTimeList(cfg.times);
+  document.getElementById('newTime').value = '12:00';
+}
 function removeTime(idx){ const cfg = getMonitorConfig(); cfg.times.splice(idx, 1); setMonitorConfig(cfg); renderTimeList(cfg.times); }
 
 // 从表单收集监控配置（不校验，保留检测状态字段）
@@ -1194,7 +1227,7 @@ function collectMonitorConfigFromForm(){
   const cfg = {
     apihz: { id: document.getElementById('cfg_apihz_id').value.trim(), key: document.getElementById('cfg_apihz_key').value.trim() },
     dingtalk: { webhook: document.getElementById('cfg_ding_webhook').value.trim().replace(/`/g, ''), secret: document.getElementById('cfg_ding_secret').value.trim(), keyword: document.getElementById('cfg_ding_keyword').value.trim() || '备案监控' },
-    companies: [], times: oldCfg.times || []
+    companies: [], times: normalizeTimes(oldCfg.times || [])
   };
   const oldCompanies = oldCfg.companies || [];
   const rows = document.querySelectorAll('#companyMonitorList .company-monitor-row');
