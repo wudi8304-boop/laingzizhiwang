@@ -356,8 +356,8 @@
       <div class="section config-section">
         <div class="section-title">🔑 apihz API 配置（备案查询接口）</div>
         <div class="form-grid">
-          <div class="form-item"><label>开发者 ID</label><input type="text" id="cfg_apihz_id" placeholder="如 10019926"></div>
-          <div class="form-item"><label>开发者 KEY</label><input type="password" id="cfg_apihz_key" placeholder="apihz 通讯秘钥"></div>
+          <div class="form-item"><label>开发者 ID</label><input type="text" id="cfg_apihz_id" placeholder="如 10019926" onchange="autoSaveMonitor()"></div>
+          <div class="form-item"><label>开发者 KEY</label><input type="password" id="cfg_apihz_key" placeholder="apihz 通讯秘钥" onchange="autoSaveMonitor()"></div>
         </div>
         <div class="help-tip" style="margin-top:8px;margin-bottom:0;font-size:11px;">
           接口地址：cn.apihz.cn/api/wangzhan/syicpxcx.php，单价 10 盟点/次。ID/KEY 在 apihz.cn 后台【个人资料】查看。
@@ -366,9 +366,9 @@
       <div class="section config-section">
         <div class="section-title">🔔 钉钉群机器人通知</div>
         <div class="form-grid">
-          <div class="form-item full"><label>Webhook 地址 <span style="color:var(--danger);">*</span></label><input type="text" id="cfg_ding_webhook" placeholder="如 https://oapi.dingtalk.com/robot/send?access_token=xxx"></div>
-          <div class="form-item"><label>加签密钥（SEC开头，可选）</label><input type="password" id="cfg_ding_secret" placeholder="如 SECxxxxxxxx"></div>
-          <div class="form-item"><label>通知关键词（安全设置，默认备案监控）</label><input type="text" id="cfg_ding_keyword" placeholder="备案监控"></div>
+          <div class="form-item full"><label>Webhook 地址 <span style="color:var(--danger);">*</span></label><input type="text" id="cfg_ding_webhook" placeholder="如 https://oapi.dingtalk.com/robot/send?access_token=xxx" onchange="autoSaveMonitor()"></div>
+          <div class="form-item"><label>加签密钥（SEC开头，可选）</label><input type="password" id="cfg_ding_secret" placeholder="如 SECxxxxxxxx" onchange="autoSaveMonitor()"></div>
+          <div class="form-item"><label>通知关键词（安全设置，默认备案监控）</label><input type="text" id="cfg_ding_keyword" placeholder="备案监控" onchange="autoSaveMonitor()"></div>
         </div>
         <div style="margin-top:8px;display:flex;gap:6px;flex-wrap:wrap;align-items:center;">
           <button class="btn warning sm" onclick="testDingTalk()">📨 测试钉钉通知</button>
@@ -466,18 +466,30 @@ async function apiPost(path, data){
 }
 // 启动时加载远程配置；后端不可用则降级到 localStorage
 async function initRemoteConfig(){
+  // 先读本地缓存作为基础（防止后端空数据覆盖本地已有配置）
+  const localEmails = (() => { try { return JSON.parse(localStorage.getItem(EMAIL_STORAGE_KEY) || '[]'); } catch(_) { return []; } })();
+  const localMonitor = (() => { try { return JSON.parse(localStorage.getItem(MONITOR_CONFIG_KEY) || 'null') || JSON.parse(JSON.stringify(DEFAULT_MONITOR_CONFIG)); } catch(_) { return JSON.parse(JSON.stringify(DEFAULT_MONITOR_CONFIG)); } })();
+  _emailsCache = localEmails;
+  _monitorCache = localMonitor;
   try {
     const [emails, monitor] = await Promise.all([apiGet('/api/emails'), apiGet('/api/monitor')]);
-    _emailsCache = Array.isArray(emails) ? emails : [];
-    _monitorCache = monitor || JSON.parse(JSON.stringify(DEFAULT_MONITOR_CONFIG));
     _useApi = true;
-    // 同步到本地作为离线缓存
-    localStorage.setItem(EMAIL_STORAGE_KEY, JSON.stringify(_emailsCache));
-    localStorage.setItem(MONITOR_CONFIG_KEY, JSON.stringify(_monitorCache));
+    // 后端有数据 → 用后端的；后端无数据 → 保留本地并反向同步到后端
+    if (Array.isArray(emails) && emails.length > 0) {
+      _emailsCache = emails;
+      localStorage.setItem(EMAIL_STORAGE_KEY, JSON.stringify(_emailsCache));
+    } else if (localEmails.length > 0) {
+      apiPost('/api/emails', localEmails).catch(()=>{});
+    }
+    if (monitor) {
+      _monitorCache = monitor;
+      localStorage.setItem(MONITOR_CONFIG_KEY, JSON.stringify(_monitorCache));
+    } else {
+      apiPost('/api/monitor', localMonitor).catch(()=>{});
+    }
+    console.log('后端已连接，配置已同步');
   } catch(e) {
     console.warn('后端不可用，使用本地存储:', e.message);
-    _emailsCache = (() => { try { return JSON.parse(localStorage.getItem(EMAIL_STORAGE_KEY) || '[]'); } catch(_) { return []; } })();
-    _monitorCache = (() => { try { return JSON.parse(localStorage.getItem(MONITOR_CONFIG_KEY) || 'null') || JSON.parse(JSON.stringify(DEFAULT_MONITOR_CONFIG)); } catch(_) { return JSON.parse(JSON.stringify(DEFAULT_MONITOR_CONFIG)); } })();
     _useApi = false;
   }
 }
@@ -1176,7 +1188,8 @@ function renderTimeList(times){
 function addTime(){ const t = document.getElementById('newTime').value; if (!t) { showToast('请选择时间', 'error'); return; } const cfg = getMonitorConfig(); if (cfg.times.includes(t)) { showToast('该时间已存在', 'error'); return; } cfg.times.push(t); cfg.times.sort(); setMonitorConfig(cfg); renderTimeList(cfg.times); document.getElementById('newTime').value = '12:00'; }
 function removeTime(idx){ const cfg = getMonitorConfig(); cfg.times.splice(idx, 1); setMonitorConfig(cfg); renderTimeList(cfg.times); }
 
-function saveMonitorConfig(){
+// 从表单收集监控配置（不校验，保留检测状态字段）
+function collectMonitorConfigFromForm(){
   const oldCfg = getMonitorConfig();
   const cfg = {
     apihz: { id: document.getElementById('cfg_apihz_id').value.trim(), key: document.getElementById('cfg_apihz_key').value.trim() },
@@ -1190,8 +1203,24 @@ function saveMonitorConfig(){
     const name = inputs[0] ? inputs[0].value.trim() : '';
     const fullName = inputs[1] ? inputs[1].value.trim() : '';
     const old = oldCompanies[i] || {};
-    if (name) cfg.companies.push({ name: name, fullName: fullName, enabled: old.enabled != null ? old.enabled : true, lastCount: old.lastCount != null ? old.lastCount : null, lastCheck: old.lastCheck || '', hasNew: old.hasNew || false });
+    if (name) cfg.companies.push({
+      name: name, fullName: fullName,
+      enabled: old.enabled != null ? old.enabled : true,
+      lastCount: old.lastCount != null ? old.lastCount : null,
+      lastCheck: old.lastCheck || '',
+      hasNew: old.hasNew || false,
+      lastKeys: Array.isArray(old.lastKeys) ? old.lastKeys : []  // 保留上次检测的key列表，避免重复"首次检测"
+    });
   });
+  return cfg;
+}
+// 自动保存（输入框修改时触发，不校验不提示）
+function autoSaveMonitor(){
+  const cfg = collectMonitorConfigFromForm();
+  setMonitorConfig(cfg);
+}
+function saveMonitorConfig(){
+  const cfg = collectMonitorConfigFromForm();
   if (!cfg.apihz.id || !cfg.apihz.key) { showToast('请填写 apihz 开发者 ID 和 KEY', 'error'); return; }
   if (!cfg.dingtalk.webhook) { showToast('请填写钉钉机器人 Webhook 地址', 'error'); return; }
   if (cfg.companies.length === 0) { showToast('请添加至少一个监控公司', 'error'); return; }
