@@ -1193,7 +1193,7 @@ function collectMonitorConfigFromForm(){
   const oldCfg = getMonitorConfig();
   const cfg = {
     apihz: { id: document.getElementById('cfg_apihz_id').value.trim(), key: document.getElementById('cfg_apihz_key').value.trim() },
-    dingtalk: { webhook: document.getElementById('cfg_ding_webhook').value.trim(), secret: document.getElementById('cfg_ding_secret').value.trim(), keyword: document.getElementById('cfg_ding_keyword').value.trim() || '备案监控' },
+    dingtalk: { webhook: document.getElementById('cfg_ding_webhook').value.trim().replace(/`/g, ''), secret: document.getElementById('cfg_ding_secret').value.trim(), keyword: document.getElementById('cfg_ding_keyword').value.trim() || '备案监控' },
     companies: [], times: oldCfg.times || []
   };
   const oldCompanies = oldCfg.companies || [];
