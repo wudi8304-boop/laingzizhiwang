@@ -126,9 +126,9 @@ def query_apihz(apihz, main_name):
         return False, 0, [], '网络错误: %s' % e
 
 def extract_item(d):
-    """从 apihz 返回项提取 (name, icp)"""
-    name = d.get('name') or d.get('xcxname') or d.get('title') or '未命名'
-    icp = d.get('icp') or d.get('beian') or d.get('record') or ''
+    """从 apihz 返回项提取 (name, icp)，兼容多种字段名"""
+    name = d.get('name') or d.get('xcxname') or d.get('title') or d.get('appname') or d.get('app_name') or d.get('nickName') or d.get('nickname') or d.get('miniProgramName') or ''
+    icp = d.get('icp') or d.get('beian') or d.get('record') or d.get('beianhao') or d.get('icpNo') or ''
     return name, icp
 
 # ============ 主流程 ============
@@ -181,13 +181,25 @@ def main():
             c['lastKeys'] = cur_keys
             c['lastCheck'] = now_str
             if prev is not None and total > prev:
-                # 找出新增明细
+                # 有历史且数量增加 → 找出新增明细
                 added = [it for it in cur_items if ('%s|%s' % (it[0], it[1])) not in prev_keys]
-                c['hasNew'] = True
-                has_any_new = True
-                new_lines.append('【%s】新增 %d 个小程序：' % (c.get('name') or main_name, len(added)))
-                for idx, (n, i) in enumerate(added, 1):
-                    new_lines.append('  %d. %s%s' % (idx, n, ('（%s）' % i) if i else ''))
+                if added:
+                    c['hasNew'] = True
+                    has_any_new = True
+                    new_lines.append('【%s】新增 %d 个小程序：' % (c.get('name') or main_name, len(added)))
+                    for idx, (n, i) in enumerate(added, 1):
+                        label = n or i or '未命名'
+                        new_lines.append('  %d. %s%s' % (idx, label, ('（%s）' % i) if i else ''))
+            elif prev is not None:
+                # 数量没增加，但检查是否有新 item（替换场景）
+                added = [it for it in cur_items if ('%s|%s' % (it[0], it[1])) not in prev_keys]
+                if added:
+                    c['hasNew'] = True
+                    has_any_new = True
+                    new_lines.append('【%s】发现 %d 个新小程序：' % (c.get('name') or main_name, len(added)))
+                    for idx, (n, i) in enumerate(added, 1):
+                        label = n or i or '未命名'
+                        new_lines.append('  %d. %s%s' % (idx, label, ('（%s）' % i) if i else ''))
             elif prev is None:
                 # 首次检测：把所有当前小程序当作新增，推送完整明细
                 if cur_items:
@@ -195,7 +207,8 @@ def main():
                     has_any_new = True
                     new_lines.append('【%s】首次纳入监控，当前共 %d 个小程序：' % (c.get('name') or main_name, len(cur_items)))
                     for idx, (n, i) in enumerate(cur_items, 1):
-                        new_lines.append('  %d. %s%s' % (idx, n, ('（%s）' % i) if i else ''))
+                        label = n or i or '未命名'
+                        new_lines.append('  %d. %s%s' % (idx, label, ('（%s）' % i) if i else ''))
                 else:
                     c['hasNew'] = False
             log('  %s: 查询成功，当前%d个' % (c.get('name') or main_name, total))
