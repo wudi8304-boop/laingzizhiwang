@@ -1337,7 +1337,7 @@ async function runCheckAll(){
     if (r.success) {
       // 提取本次所有小程序
       const curItems = (r.list || []).map(d => {
-        const name = d.name || d.xcxname || d.title || d.appname || d.app_name || d.nickName || d.nickname || d.miniProgramName || '';
+        const name = d.servicename || d.name || d.xcxname || d.title || d.appname || d.app_name || d.nickName || d.nickname || d.miniProgramName || '';
         const icp = d.icp || d.beian || d.record || d.beianhao || d.icpNo || '';
         return { name: name, icp: icp };
       });

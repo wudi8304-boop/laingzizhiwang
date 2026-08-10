@@ -130,8 +130,8 @@ def query_apihz(apihz, main_name):
         return False, 0, [], '网络错误: %s' % e
 
 def extract_item(d):
-    """从 apihz 返回项提取 (name, icp)，兼容多种字段名"""
-    name = d.get('name') or d.get('xcxname') or d.get('title') or d.get('appname') or d.get('app_name') or d.get('nickName') or d.get('nickname') or d.get('miniProgramName') or ''
+    """从 apihz 返回项提取 (name, icp)，servicename 是小程序名称字段"""
+    name = d.get('servicename') or d.get('name') or d.get('xcxname') or d.get('title') or d.get('appname') or d.get('app_name') or d.get('nickName') or d.get('nickname') or d.get('miniProgramName') or ''
     icp = d.get('icp') or d.get('beian') or d.get('record') or d.get('beianhao') or d.get('icpNo') or ''
     return name, icp
 
