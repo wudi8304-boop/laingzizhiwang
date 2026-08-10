@@ -1320,7 +1320,14 @@ async function runCheckAll(){
             newDetailLines.push(`  ${idx + 1}. ${it.name}${it.icp ? '（' + it.icp + '）' : ''}`);
           });
         } else if (prev == null) {
-          x.c.hasNew = false;
+          // 首次检测：把所有当前小程序当作新增，推送完整明细
+          x.c.hasNew = curItems.length > 0; hasAnyNew = hasAnyNew || curItems.length > 0;
+          if (curItems.length > 0) {
+            newDetailLines.push(`【${x.c.name}】首次纳入监控，当前共 ${curItems.length} 个小程序：`);
+            curItems.forEach((it, idx) => {
+              newDetailLines.push(`  ${idx + 1}. ${it.name}${it.icp ? '（' + it.icp + '）' : ''}`);
+            });
+          }
         }
       } else {
         // 检测失败也记录时间，不更新数量，不算新增

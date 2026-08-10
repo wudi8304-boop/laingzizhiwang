@@ -189,7 +189,15 @@ def main():
                 for idx, (n, i) in enumerate(added, 1):
                     new_lines.append('  %d. %s%s' % (idx, n, ('（%s）' % i) if i else ''))
             elif prev is None:
-                c['hasNew'] = False
+                # 首次检测：把所有当前小程序当作新增，推送完整明细
+                if cur_items:
+                    c['hasNew'] = True
+                    has_any_new = True
+                    new_lines.append('【%s】首次纳入监控，当前共 %d 个小程序：' % (c.get('name') or main_name, len(cur_items)))
+                    for idx, (n, i) in enumerate(cur_items, 1):
+                        new_lines.append('  %d. %s%s' % (idx, n, ('（%s）' % i) if i else ''))
+                else:
+                    c['hasNew'] = False
             log('  %s: 查询成功，当前%d个' % (c.get('name') or main_name, total))
         else:
             # 失败也记录时间，不更新数量，不算新增，不重试
