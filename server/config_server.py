@@ -9,6 +9,8 @@
   POST /api/emails   保存邮箱列表  body: {"data": [...]}
   GET  /api/monitor  读取监控配置
   POST /api/monitor  保存监控配置  body: {"data": {...}}
+  GET  /api/approved-programs   读取备案完成名单
+  POST /api/approved-programs   合并备案完成名单  body: {"data": [...]}
 
 鉴权：请求需携带 X-Auth 头，值为 ACCESS_TOKEN（默认 wudi2026，与前端登录密码一致）。
 
@@ -36,6 +38,7 @@ DATA_DIR = '/www/laingzizhiwang-data'
 EMAILS_FILE = os.path.join(DATA_DIR, 'emails.json')
 MONITOR_FILE = os.path.join(DATA_DIR, 'monitor.json')
 RECORDS_FILE = os.path.join(DATA_DIR, 'records.json')   # 检测历史记录
+APPROVED_PROGRAMS_FILE = os.path.join(DATA_DIR, 'approved_programs.json')
 
 # ============ 工具函数 ============
 def ensure_data_dir():
@@ -58,6 +61,45 @@ def write_json(path, data):
     with open(tmp, 'w', encoding='utf-8') as f:
         json.dump(data, f, ensure_ascii=False, indent=2)
     os.replace(tmp, path)
+
+def read_approved_programs():
+    """读取完成名单；首次上线时从历史检测记录回填"""
+    if os.path.exists(APPROVED_PROGRAMS_FILE):
+        data = read_json(APPROVED_PROGRAMS_FILE, [])
+        return data if isinstance(data, list) else []
+    monitor = read_json(MONITOR_FILE, {})
+    company_full_names = {}
+    if isinstance(monitor, dict):
+        for company in (monitor.get('companies') or []):
+            if not isinstance(company, dict):
+                continue
+            short_name = str(company.get('name') or '').strip()
+            full_name = str(company.get('fullName') or '').strip()
+            if short_name:
+                company_full_names[short_name] = full_name
+    records = read_json(RECORDS_FILE, {})
+    result = []
+    if not isinstance(records, dict):
+        return result
+    for company, record in records.items():
+        items = record.get('items', []) if isinstance(record, dict) else []
+        if not isinstance(items, list):
+            continue
+        for item in items:
+            if isinstance(item, dict):
+                name = str(item.get('name') or '').strip()
+            elif isinstance(item, (list, tuple)) and item:
+                name = str(item[0] or '').strip()
+            else:
+                name = ''
+            if name:
+                result.append({
+                    'companyName': company,
+                    'companyFullName': company_full_names.get(company, ''),
+                    'miniProgramName': name,
+                    'approvedAt': record.get('lastCheck') or ''
+                })
+    return result
 
 def log(msg):
     import sys
@@ -107,6 +149,8 @@ class Handler(BaseHTTPRequestHandler):
             self._send(200, {'data': read_json(MONITOR_FILE, None)})
         elif path == '/api/records':
             self._send(200, {'data': read_json(RECORDS_FILE, {})})
+        elif path == '/api/approved-programs':
+            self._send(200, {'data': read_approved_programs()})
         else:
             self._send(404, {'error': 'unknown endpoint'})
 
@@ -134,6 +178,40 @@ class Handler(BaseHTTPRequestHandler):
             write_json(RECORDS_FILE, data)
             log('保存检测记录 %d 家公司' % (len(data) if isinstance(data, dict) else 0))
             self._send(200, {'ok': True})
+        elif path == '/api/approved-programs':
+            # 前端立即检测可能同时提交，仅做追加合并，不覆盖 cron 已写入的数据
+            existing = read_approved_programs()
+            incoming = data if isinstance(data, list) else []
+            monitor = read_json(MONITOR_FILE, {})
+            company_full_names = {}
+            if isinstance(monitor, dict):
+                for company in (monitor.get('companies') or []):
+                    if not isinstance(company, dict):
+                        continue
+                    short_name = str(company.get('name') or '').strip()
+                    full_name = str(company.get('fullName') or '').strip()
+                    if short_name:
+                        company_full_names[short_name] = full_name
+            merged = {}
+            for entry in existing + incoming:
+                if not isinstance(entry, dict):
+                    continue
+                company = str(entry.get('companyName') or '').strip()
+                full_name = str(entry.get('companyFullName') or company_full_names.get(company, '') or '').strip()
+                name = str(entry.get('miniProgramName') or '').strip()
+                if not name:
+                    continue
+                # 小程序名称全局唯一，按名称去重；公司信息仅用于追溯来源
+                merged[name] = {
+                    'companyName': company,
+                    'companyFullName': full_name,
+                    'miniProgramName': name,
+                    'approvedAt': entry.get('approvedAt') or ''
+                }
+            result = list(merged.values())
+            write_json(APPROVED_PROGRAMS_FILE, result)
+            log('保存备案完成名单 %d 条' % len(result))
+            self._send(200, {'ok': True, 'count': len(result)})
         else:
             self._send(404, {'error': 'unknown endpoint'})
 

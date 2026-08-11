@@ -449,6 +449,7 @@ const API_TOKEN = ACCESS_PASSWORD;
 let _useApi = false;            // 后端是否可用
 let _emailsCache = null;        // 邮箱内存缓存
 let _monitorCache = null;       // 监控配置内存缓存
+let _approvedProgramsCache = []; // 已备案小程序名单（由定时/立即检测同步）
 
 async function apiGet(path){
   const r = await fetch(path, { headers: { 'X-Auth': API_TOKEN } });
@@ -472,8 +473,13 @@ async function initRemoteConfig(){
   _emailsCache = localEmails;
   _monitorCache = localMonitor;
   try {
-    const [emails, monitor] = await Promise.all([apiGet('/api/emails'), apiGet('/api/monitor')]);
+    const [emails, monitor, approvedPrograms] = await Promise.all([
+      apiGet('/api/emails'),
+      apiGet('/api/monitor'),
+      apiGet('/api/approved-programs')
+    ]);
     _useApi = true;
+    _approvedProgramsCache = Array.isArray(approvedPrograms) ? approvedPrograms : [];
     // 后端有数据 → 用后端的；后端无数据 → 保留本地并反向同步到后端
     if (Array.isArray(emails) && emails.length > 0) {
       _emailsCache = emails;
@@ -552,7 +558,17 @@ function getAllRecords(){
     return r;
   }).filter(Boolean);
   local.filter(r => r._type === 'add').forEach(r => { merged.push(Object.assign({}, r, { id: r._localId })); });
-  return merged;
+  // 小程序名称全局唯一，仅按名称匹配备案完成状态
+  const approvedNames = new Set((_approvedProgramsCache || [])
+    .map(x => String((x && x.miniProgramName) || '').trim())
+    .filter(Boolean));
+  return merged.map(r => {
+    const name = String(r.miniProgramName || '').trim();
+    if (name && approvedNames.has(name) && r.status !== '备案完成') {
+      return Object.assign({}, r, { status: '备案完成', submitDate: null });
+    }
+    return r;
+  });
 }
 
 function esc(s){ if(s==null) return ''; return String(s).replace(/[&<>"']/g, c=>({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c])); }
@@ -1356,6 +1372,7 @@ async function runCheckAll(){
   if (btn) { btn.disabled = true; btn.textContent = '检测中...'; }
   let hasAnyNew = false;
   const newDetailLines = []; // 记录新增小程序的明细，用于钉钉通知
+  const approvedPrograms = []; // 查询结果均为已备案，用于同步数据管理状态
 
   // 读取历史检测记录（每家公司的上次 items），新公司默认 items 为空
   let records = {};
@@ -1388,6 +1405,14 @@ async function runCheckAll(){
     const now = new Date().toLocaleString('zh-CN', { hour12: false });
     if (r.success) {
       const curItems = (r.list || []).map(extractRecordItem);
+      curItems.forEach(it => {
+        if (it.name) approvedPrograms.push({
+          companyName: x.c.name,
+          companyFullName: x.c.fullName || x.c.name,
+          miniProgramName: it.name,
+          approvedAt: now
+        });
+      });
       const prevRec = records[x.c.name] || {};
       const prevItems = Array.isArray(prevRec.items) ? prevRec.items : [];
       const prevKeys = new Set(prevItems.map(recordItemIdentity).filter(Boolean));
@@ -1450,6 +1475,18 @@ async function runCheckAll(){
     // 回写 records.json（本次结果作为下次比对基准）
     if (_useApi) {
       try { await apiPost('/api/records', records); } catch(e) { console.warn('保存records失败:', e.message); }
+      if (approvedPrograms.length > 0) {
+        try {
+          await apiPost('/api/approved-programs', approvedPrograms);
+          const approvedKey = x => String(x.miniProgramName || '').trim();
+          const byKey = new Map((_approvedProgramsCache || []).map(x => [approvedKey(x), x]));
+          approvedPrograms.forEach(x => byKey.set(approvedKey(x), x));
+          _approvedProgramsCache = Array.from(byKey.values());
+          render();
+        } catch(e) {
+          console.warn('同步备案完成状态失败:', e.message);
+        }
+      }
     }
 
     if (hasAnyNew) {

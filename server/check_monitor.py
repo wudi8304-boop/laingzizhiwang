@@ -33,6 +33,7 @@ from datetime import datetime
 DATA_DIR = '/www/laingzizhiwang-data'
 MONITOR_FILE = os.path.join(DATA_DIR, 'monitor.json')
 RECORDS_FILE = os.path.join(DATA_DIR, 'records.json')   # {公司名: {items: [...], lastCheck: '', lastCount: 0}}
+APPROVED_PROGRAMS_FILE = os.path.join(DATA_DIR, 'approved_programs.json')
 LAST_RUN_FILE = os.path.join(DATA_DIR, 'last_run.json')
 APIHZ_URL = 'https://cn.apihz.cn/api/wangzhan/syicpxcx.php'
 DINGTALK_PROXY = 'http://127.0.0.1:8080/ding-proxy/robot/send'
@@ -155,6 +156,60 @@ def item_identity(it):
         return 'icp:' + item['icp']
     return ''
 
+def update_approved_programs(entries):
+    """合并备案通过名单，供数据管理页面自动更新状态"""
+    if not entries:
+        return 0
+    cfg = read_json(MONITOR_FILE, {})
+    company_full_names = {}
+    if isinstance(cfg, dict):
+        for company in (cfg.get('companies') or []):
+            if not isinstance(company, dict):
+                continue
+            short_name = str(company.get('name') or '').strip()
+            full_name = str(company.get('fullName') or '').strip()
+            if short_name:
+                company_full_names[short_name] = full_name
+    current = read_json(APPROVED_PROGRAMS_FILE, [])
+    if not isinstance(current, list):
+        current = []
+    # 首次启用该功能时，用历史成功检测记录回填，避免必须等下一轮全部查询成功
+    if not os.path.exists(APPROVED_PROGRAMS_FILE):
+        legacy_records = read_json(RECORDS_FILE, {})
+        if isinstance(legacy_records, dict):
+            for company, record in legacy_records.items():
+                items = record.get('items', []) if isinstance(record, dict) else []
+                if not isinstance(items, list):
+                    continue
+                for it in items:
+                    item = normalize_item(it)
+                    if item['name']:
+                        current.append({
+                            'companyName': company,
+                            'companyFullName': company_full_names.get(company, ''),
+                            'miniProgramName': item['name'],
+                            'approvedAt': record.get('lastCheck') or ''
+                        })
+    merged = {}
+    for entry in current + entries:
+        if not isinstance(entry, dict):
+            continue
+        company = str(entry.get('companyName') or '').strip()
+        full_name = str(entry.get('companyFullName') or company_full_names.get(company, '') or '').strip()
+        name = str(entry.get('miniProgramName') or '').strip()
+        if not name:
+            continue
+        # 小程序名称全局唯一，按名称去重；公司信息仅用于追溯来源
+        key = name
+        merged[key] = {
+            'companyName': company,
+            'companyFullName': full_name,
+            'miniProgramName': name,
+            'approvedAt': entry.get('approvedAt') or ''
+        }
+    write_json(APPROVED_PROGRAMS_FILE, list(merged.values()))
+    return len(merged)
+
 # ============ 主流程 ============
 def main():
     cfg = read_json(MONITOR_FILE, None)
@@ -201,7 +256,7 @@ def main():
 
     log('开始检测 %d 家公司' % len(targets))
     new_lines = []
-    state = {'has_new': False}  # 用 dict 包装，避免 nonlocal 作用域问题
+    state = {'has_new': False, 'approved': []}  # 用 dict 包装，避免 nonlocal 作用域问题
 
     def handle_result(c, ok, total, lst, now_str):
         """处理单次检测结果，返回 True=成功 False=失败"""
@@ -210,6 +265,15 @@ def main():
         if ok:
             # 提取本次所有小程序（统一为 {name, icp}）
             cur_items = [extract_item(d) for d in lst]
+            # 查询结果均为已备案小程序，加入备案完成名单
+            for it in cur_items:
+                if it.get('name'):
+                    state['approved'].append({
+                        'companyName': cname,
+                        'companyFullName': main_name,
+                        'miniProgramName': it['name'],
+                        'approvedAt': now_str
+                    })
             # 读取上次记录（兼容旧版 [name, icp] 与前端 {name, icp}）
             prev_rec = records.get(cname, {})
             prev_items = prev_rec.get('items', []) if isinstance(prev_rec, dict) else []
@@ -281,6 +345,11 @@ def main():
     # 回写 monitor.json（更新显示状态）
     write_json(MONITOR_FILE, cfg)
     log('监控配置已回写 monitor.json')
+
+    # 将查询到的备案通过名称同步给数据管理页面
+    approved_count = update_approved_programs(state['approved'])
+    if state['approved']:
+        log('备案完成名单已同步，共%d条' % approved_count)
 
     # 有新增则推送钉钉（含名称和备案号）
     if state['has_new']:
