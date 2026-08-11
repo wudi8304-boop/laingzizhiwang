@@ -1364,23 +1364,37 @@ async function runCheckAll(){
   }
   if (!records || typeof records !== 'object') records = {};
 
+  // 兼容历史格式：{name,icp} 与 [name,icp]；比对优先用小程序名，避免重复误报
+  function normalizeRecordItem(it){
+    if (Array.isArray(it) && it.length >= 2) return { name: String(it[0] || '').trim(), icp: String(it[1] || '').trim() };
+    if (it && typeof it === 'object') return { name: String(it.name || '').trim(), icp: String(it.icp || '').trim() };
+    return { name: '', icp: '' };
+  }
+  function recordItemIdentity(it){
+    const item = normalizeRecordItem(it);
+    if (item.name) return 'name:' + item.name;
+    if (item.icp) return 'icp:' + item.icp;
+    return '';
+  }
+  function extractRecordItem(d){
+    const name = d.servicename || d.name || d.xcxname || d.title || d.appname || d.app_name || d.nickName || d.nickname || d.miniProgramName || '';
+    // icpw=应用备案号（优先）；icp=主体备案号仅兜底
+    const icp = d.icpw || d.icp || d.beian || d.record || d.beianhao || d.icpNo || '';
+    return { name: String(name || '').trim(), icp: String(icp || '').trim() };
+  }
+
   // 处理单次检测结果：返回 true=成功 false=失败
   function handleResult(x, r){
     const now = new Date().toLocaleString('zh-CN', { hour12: false });
     if (r.success) {
-      // 提取本次所有小程序
-      const curItems = (r.list || []).map(d => {
-        const name = d.servicename || d.name || d.xcxname || d.title || d.appname || d.app_name || d.nickName || d.nickname || d.miniProgramName || '';
-        const icp = d.icp || d.beian || d.record || d.beianhao || d.icpNo || '';
-        return { name: name, icp: icp };
-      });
-      const curKeys = curItems.map(it => (it.name + '|' + it.icp));
-      // 读取上次记录（新公司默认 items 为空）
+      const curItems = (r.list || []).map(extractRecordItem);
       const prevRec = records[x.c.name] || {};
       const prevItems = Array.isArray(prevRec.items) ? prevRec.items : [];
-      const prevKeys = prevItems.map(it => (it.name + '|' + it.icp));
-      // 找出新增（本次有但上次没有）
-      const added = curItems.filter(it => !prevKeys.includes(it.name + '|' + it.icp));
+      const prevKeys = new Set(prevItems.map(recordItemIdentity).filter(Boolean));
+      const added = curItems.filter(it => {
+        const k = recordItemIdentity(it);
+        return k && !prevKeys.has(k);
+      });
       if (added.length > 0) {
         x.c.hasNew = true; hasAnyNew = true;
         newDetailLines.push(`【${x.c.name}】新增 ${added.length} 个小程序：`);
@@ -1391,9 +1405,7 @@ async function runCheckAll(){
       } else {
         x.c.hasNew = false;
       }
-      // 更新记录（本次作为下次的基准）
       records[x.c.name] = { items: curItems, lastCheck: now, lastCount: r.total };
-      // 同步更新 monitor 配置的显示状态
       x.c.lastCount = r.total;
       x.c.lastCheck = now;
       return true;

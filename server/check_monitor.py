@@ -130,14 +130,30 @@ def query_apihz(apihz, main_name):
         return False, 0, [], '网络错误: %s' % e
 
 def extract_item(d):
-    """从 apihz 返回项提取 (name, icp)，servicename 是小程序名称字段"""
+    """从 apihz 返回项提取统一结构 {name, icp}
+    - servicename: 小程序名称
+    - icpw: 应用备案号（优先）；icp 是主体备案号，仅作兜底
+    """
     name = d.get('servicename') or d.get('name') or d.get('xcxname') or d.get('title') or d.get('appname') or d.get('app_name') or d.get('nickName') or d.get('nickname') or d.get('miniProgramName') or ''
-    icp = d.get('icp') or d.get('beian') or d.get('record') or d.get('beianhao') or d.get('icpNo') or ''
-    return name, icp
+    icp = d.get('icpw') or d.get('icp') or d.get('beian') or d.get('record') or d.get('beianhao') or d.get('icpNo') or ''
+    return {'name': str(name or '').strip(), 'icp': str(icp or '').strip()}
 
-def item_key(name, icp):
-    """生成唯一标识"""
-    return '%s|%s' % (name, icp)
+def normalize_item(it):
+    """兼容历史两种格式：{"name","icp"} 与 [name, icp]"""
+    if isinstance(it, dict):
+        return {'name': str(it.get('name') or '').strip(), 'icp': str(it.get('icp') or '').strip()}
+    if isinstance(it, (list, tuple)) and len(it) >= 2:
+        return {'name': str(it[0] or '').strip(), 'icp': str(it[1] or '').strip()}
+    return {'name': '', 'icp': ''}
+
+def item_identity(it):
+    """比对身份：优先小程序名称，避免主体/应用备案号字段切换导致重复误报"""
+    item = normalize_item(it)
+    if item['name']:
+        return 'name:' + item['name']
+    if item['icp']:
+        return 'icp:' + item['icp']
+    return ''
 
 # ============ 主流程 ============
 def main():
@@ -192,22 +208,32 @@ def main():
         main_name = c.get('fullName') or c.get('name', '')
         cname = c.get('name') or main_name
         if ok:
-            # 提取本次所有小程序
+            # 提取本次所有小程序（统一为 {name, icp}）
             cur_items = [extract_item(d) for d in lst]
-            cur_keys = [item_key(n, i) for (n, i) in cur_items]
-            # 读取上次记录（新公司默认 items 为空）
+            # 读取上次记录（兼容旧版 [name, icp] 与前端 {name, icp}）
             prev_rec = records.get(cname, {})
             prev_items = prev_rec.get('items', []) if isinstance(prev_rec, dict) else []
-            prev_keys = [item_key(n, i) for (n, i) in prev_items]
+            if not isinstance(prev_items, list):
+                prev_items = []
+            prev_keys = set()
+            for it in prev_items:
+                k = item_identity(it)
+                if k:
+                    prev_keys.add(k)
             # 找出新增（本次有但上次没有）
-            added = [(n, i) for (n, i) in cur_items if item_key(n, i) not in prev_keys]
+            added = []
+            for it in cur_items:
+                k = item_identity(it)
+                if k and k not in prev_keys:
+                    added.append(it)
             if added:
                 state['has_new'] = True
                 new_lines.append('【%s】新增 %d 个小程序：' % (cname, len(added)))
-                for idx, (n, i) in enumerate(added, 1):
-                    label = n or i or '未命名'
-                    new_lines.append('  %d. %s%s' % (idx, label, ('（%s）' % i) if i else ''))
-            # 更新记录（本次作为下次的基准）
+                for idx, it in enumerate(added, 1):
+                    label = it.get('name') or it.get('icp') or '未命名'
+                    icp = it.get('icp') or ''
+                    new_lines.append('  %d. %s%s' % (idx, label, ('（%s）' % icp) if icp else ''))
+            # 更新记录（本次作为下次的基准，始终写对象格式）
             records[cname] = {'items': cur_items, 'lastCheck': now_str, 'lastCount': total}
             # 同步更新 monitor.json 里的显示状态
             c['lastCount'] = total
