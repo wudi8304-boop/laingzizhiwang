@@ -1,109 +1,111 @@
-#!/bin/bash
-# 一键部署脚本：修复Python兼容 + 启动后端 + 修复nginx + 配cron
-# 用法：bash /www/laingzizhiwang/server/deploy.sh
-set -e
+#!/usr/bin/env bash
+# 首次部署。日常发布请使用 server/update.sh。
+set -Eeuo pipefail
 
-echo "===== 0. 拉取最新代码 ====="
-cd /www/laingzizhiwang
-git pull || echo "git pull失败，继续"
+APP_DIR="${APP_DIR:-/www/laingzizhiwang}"
+DATA_DIR="${DATA_DIR:-/www/laingzizhiwang-data}"
+ENV_FILE="${ENV_FILE:-/etc/lzz-config.env}"
+SERVICE_USER="${SERVICE_USER:-lzz}"
 
-echo "===== 1. 创建数据目录 ====="
-mkdir -p /www/laingzizhiwang-data
-
-echo "===== 2. 创建 systemd 服务 ====="
-cat > /etc/systemd/system/lzz-config.service <<'UNIT'
-[Unit]
-Description=Laingzizhiwang Config Server
-After=network.target
-
-[Service]
-Type=simple
-ExecStart=/usr/bin/python3 /www/laingzizhiwang/server/config_server.py
-Restart=always
-RestartSec=5
-User=root
-
-[Install]
-WantedBy=multi-user.target
-UNIT
-systemctl daemon-reload
-systemctl enable lzz-config
-systemctl restart lzz-config
-sleep 2
-
-echo "===== 3. 检查后端服务状态 ====="
-if systemctl is-active --quiet lzz-config; then
-    echo "✓ 后端服务运行中"
-else
-    echo "✗ 后端服务启动失败，错误日志："
-    journalctl -u lzz-config -n 10 --no-pager
-    echo ""
-    echo "尝试诊断 Python 版本："
-    python3 --version
-    echo "尝试手动运行："
-    timeout 3 python3 /www/laingzizhiwang/server/config_server.py 2>&1 || true
+if [[ "${EUID}" -ne 0 ]]; then
+    echo "错误：首次部署必须以 root 运行。" >&2
+    exit 1
 fi
-
-echo "===== 4. 测试后端 API ====="
-RESP=$(curl -s -H "X-Auth: wudi2026" http://127.0.0.1:8091/api/monitor)
-if [ -n "$RESP" ]; then
-    echo "✓ 后端API响应: $RESP"
-else
-    echo "✗ 后端API无响应"
+if ! command -v sqlite3 >/dev/null && command -v dnf >/dev/null; then
+    dnf install -y sqlite
 fi
-
-echo "===== 5. 写入 nginx 配置 ====="
-cat > /etc/nginx/conf.d/laingzizhiwang.conf <<'NGINX'
-server {
-    listen 8080;
-    server_name _;
-    root /www/laingzizhiwang;
-    index index.html;
-    location / {
-        try_files $uri $uri/ =404;
+for command in git python3 node npm sqlite3 systemctl nginx curl tar awk sha256sum; do
+    command -v "${command}" >/dev/null || {
+        echo "错误：缺少命令 ${command}" >&2
+        exit 1
     }
-    location /api/ {
-        proxy_pass http://127.0.0.1:8091;
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Auth $http_x_auth;
-    }
-    location /ding-proxy/ {
-        proxy_pass https://oapi.dingtalk.com/;
-        proxy_ssl_server_name on;
-        proxy_set_header Host oapi.dingtalk.com;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header Content-Type "application/json";
-    }
+done
+[[ -d "${APP_DIR}/.git" ]] || {
+    echo "错误：${APP_DIR} 不是已克隆的 Git 仓库。" >&2
+    exit 1
 }
-NGINX
 
-echo "===== 6. 测试并重载 nginx ====="
-if nginx -t; then
-    systemctl reload nginx
-    echo "✓ nginx 已重载"
+echo "===== 创建低权限服务账户和目录 ====="
+id "${SERVICE_USER}" >/dev/null 2>&1 ||
+    useradd --system --home-dir "${DATA_DIR}" --shell /usr/sbin/nologin "${SERVICE_USER}"
+install -d -o "${SERVICE_USER}" -g "${SERVICE_USER}" -m 0750 "${DATA_DIR}"
+install -d -o "${SERVICE_USER}" -g "${SERVICE_USER}" -m 0750 /var/log/lzz-config
+install -d -o root -g root -m 0750 /var/backups/lzz-config
+
+if [[ ! -f "${ENV_FILE}" ]]; then
+    install -o root -g "${SERVICE_USER}" -m 0640 "${APP_DIR}/.env.example" "${ENV_FILE}"
+    echo "已创建 ${ENV_FILE}。请填写必填项后重新运行本脚本。" >&2
+    exit 2
+fi
+chown root:"${SERVICE_USER}" "${ENV_FILE}"
+chmod 0640 "${ENV_FILE}"
+set -a
+source "${ENV_FILE}"
+set +a
+export LAINGZIZHIWANG_DATA_DIR="${LAINGZIZHIWANG_DATA_DIR:-${DATA_DIR}}"
+
+echo "===== 检查 Node.js 运行环境 ====="
+NODE_HOME="${NODE_HOME:-/opt/lzz-node}"
+node_major="$(node --version | tr -d v | cut -d. -f1)"
+if (( node_major < 20 )); then
+    tmp_node="$(mktemp -d)"
+    trap 'rm -rf "${tmp_node}"' EXIT
+    checksum_line="$(curl -fsSL https://nodejs.org/dist/latest-v20.x/SHASUMS256.txt | awk '$2 ~ /linux-x64.tar.xz$/ {print; exit}')"
+    node_archive="${checksum_line##* }"
+    [[ -n "${node_archive}" ]] || { echo "无法解析 Node.js 20 下载信息" >&2; exit 1; }
+    curl -fsSL "https://nodejs.org/dist/latest-v20.x/${node_archive}" -o "${tmp_node}/${node_archive}"
+    (cd "${tmp_node}" && echo "${checksum_line}" | sha256sum -c -)
+    rm -rf "${NODE_HOME}"
+    mkdir -p "${NODE_HOME}"
+    tar -xJf "${tmp_node}/${node_archive}" --strip-components=1 -C "${NODE_HOME}"
 else
-    echo "✗ nginx 配置错误"
+    NODE_HOME="$(dirname "$(dirname "$(command -v node)")")"
+fi
+export PATH="${NODE_HOME}/bin:${PATH}"
+node --version
+
+echo "===== 安装应用依赖 ====="
+"${NODE_HOME}/bin/npm" --prefix "${APP_DIR}" ci
+if [[ "${VENDOR_SYNC_ENABLED:-false}" == "true" ]]; then
+    export PLAYWRIGHT_BROWSERS_PATH="${PLAYWRIGHT_BROWSERS_PATH:-/opt/lzz-playwright}"
+    if command -v dnf >/dev/null; then
+        dnf install -y atk at-spi2-atk libX11 libxcb libXcomposite libXdamage libXext libXfixes \
+            libXrandr mesa-libgbm alsa-lib cairo pango cups-libs nss nspr libdrm
+    fi
+    PLAYWRIGHT_DOWNLOAD_CONNECTION_TIMEOUT=180000 \
+        "${APP_DIR}/node_modules/.bin/playwright" install chromium --no-shell
+    chmod -R a+rX "${PLAYWRIGHT_BROWSERS_PATH}"
 fi
 
-echo "===== 7. 配置 cron 定时检测 ====="
-( crontab -l 2>/dev/null | grep -v check_monitor; echo "* * * * * /usr/bin/python3 /www/laingzizhiwang/server/check_monitor.py >> /www/monitor-check.log 2>&1" ) | crontab -
-echo "✓ cron 配置完成"
+echo "===== 安装 systemd 和日志轮转配置 ====="
+install -o root -g root -m 0644 "${APP_DIR}/server/lzz-config.service" /etc/systemd/system/lzz-config.service
+install -o root -g root -m 0644 "${APP_DIR}/server/logrotate.conf" /etc/logrotate.d/lzz-config
+chmod 0755 "${APP_DIR}/server/update.sh" "${APP_DIR}/server/backup.sh"
+chmod 0755 "${APP_DIR}/server/health_check.py" "${APP_DIR}/server/verify_backup.py"
+chmod 0755 "${APP_DIR}/server/vendor_sync.sh" "${APP_DIR}/server/vendor_scrape.js"
+chown -R "${SERVICE_USER}:${SERVICE_USER}" "${DATA_DIR}" /var/log/lzz-config
+systemctl daemon-reload
+systemctl enable lzz-config.service
 
-echo "===== 8. 最终验证 ====="
-echo "--- nginx 配置 ---"
-cat /etc/nginx/conf.d/laingzizhiwang.conf
-echo ""
-echo "--- 后端服务 ---"
-systemctl status lzz-config --no-pager | head -3
-echo ""
-echo "--- 后端 API (直连) ---"
-curl -s -H "X-Auth: wudi2026" http://127.0.0.1:8091/api/monitor
-echo ""
-echo "--- 后端 API (经nginx) ---"
-curl -s -H "X-Auth: wudi2026" http://127.0.0.1:8080/api/monitor
-echo ""
-echo "--- cron ---"
-crontab -l | grep check_monitor
-echo ""
-echo "===== 部署完成 ====="
+echo "===== 安装定时任务 ====="
+cat >/etc/cron.d/lzz-config <<EOF
+SHELL=/bin/bash
+PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+* * * * * ${SERVICE_USER} /bin/bash -c 'set -a; source ${ENV_FILE}; /usr/bin/python3 ${APP_DIR}/server/check_monitor.py' >>/var/log/lzz-config/monitor.log 2>&1
+*/5 * * * * ${SERVICE_USER} /bin/bash -c 'set -a; source ${ENV_FILE}; /usr/bin/python3 ${APP_DIR}/server/health_check.py --notify' >>/var/log/lzz-config/health.log 2>&1
+10 8 * * * ${SERVICE_USER} ${APP_DIR}/server/vendor_sync.sh scheduled >>/var/log/lzz-config/vendor.log 2>&1
+EOF
+chmod 0644 /etc/cron.d/lzz-config
+
+echo "===== 启动并进行冒烟检查 ====="
+systemctl restart lzz-config.service
+sleep 2
+if ! runuser -u "${SERVICE_USER}" -- /usr/bin/python3 "${APP_DIR}/server/health_check.py"; then
+    journalctl -u lzz-config.service -n 50 --no-pager >&2
+    echo "部署检查失败；修正 ${ENV_FILE} 后执行：systemctl restart lzz-config && python3 ${APP_DIR}/server/health_check.py" >&2
+    exit 1
+fi
+
+nginx -t
+systemctl reload nginx
+echo "部署完成。日常更新请执行：sudo ${APP_DIR}/server/update.sh"

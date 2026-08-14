@@ -99,13 +99,12 @@
   #page-data .mono { word-break: break-all; }
 
   .tag { display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: 11px; font-weight: 500; }
-  .tag-status-待审核 { background: #fdf6ec; color: #e6a23c; border: 1px solid #faecd8; }
-  .tag-status-审核中 { background: #ecf5ff; color: #409eff; border: 1px solid #d9ecff; }
-  .tag-status-审核通过 { background: #f0f9eb; color: #67c23a; border: 1px solid #e1f3d8; }
   .tag-status-待注册 { background: #fef0f0; color: #f56c6c; border: 1px solid #fde2e2; }
-  .tag-status-已验收 { background: #f4f4f5; color: #909399; border: 1px solid #e9e9eb; }
+  .tag-status-待审核 { background: #fdf6ec; color: #e6a23c; border: 1px solid #faecd8; }
+  .tag-status-备案中 { background: #ecf5ff; color: #409eff; border: 1px solid #d9ecff; }
   .tag-status-备案完成 { background: #e6fffb; color: #13c2c2; border: 1px solid #87e8de; }
-  .tag-status-待验收 { background: #f9f0ff; color: #722ed1; border: 1px solid #d3adf7; }
+  .tag-status-已结算 { background: #f4f4f5; color: #909399; border: 1px solid #e9e9eb; }
+  .tag-status-审核通过 { background: #f0f9eb; color: #67c23a; border: 1px solid #e1f3d8; }
 
   .copy-cell:hover { background: #ecf5ff !important; color: var(--primary); cursor: pointer; }
   .copy-cell { transition: background .15s; }
@@ -172,11 +171,34 @@
   .help-tip { background: #ecf5ff; border: 1px solid #d9ecff; border-radius: 5px; padding: 8px 12px; font-size: 12px; color: var(--text-2); margin-bottom: 10px; line-height: 1.5; }
   .help-tip code { background: #fff; padding: 1px 4px; border-radius: 3px; font-size: 11px; }
   .help-tip.warn { background: #fdf6ec; border-color: #faecd8; color: #e6a23c; }
+  .import-summary { display: flex; gap: 12px; flex-wrap: wrap; padding: 10px 12px; background: #f5f7fa; border-radius: 5px; margin: 12px 0; font-size: 12px; }
+  .import-summary strong { color: var(--primary); }
+  .import-preview { max-height: 320px; overflow: auto; border: 1px solid var(--border); border-radius: 5px; }
+  .import-preview table { min-width: 0; }
+  .import-preview th { position: sticky; top: 0; background: #fafafa; z-index: 1; }
+  .import-preview .duplicate { color: var(--text-3); text-decoration: line-through; }
 
   .monitor-status-bar { background: linear-gradient(90deg, #f0f9eb, #ecf5ff); border: 1px solid #e1f3d8; border-radius: 6px; padding: 10px 14px; margin-bottom: 12px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px; font-size: 13px; }
   .monitor-status-bar .left { display: flex; gap: 16px; align-items: center; }
   .monitor-status-bar .pulse { display: inline-block; width: 8px; height: 8px; background: var(--success); border-radius: 50%; animation: pulse 1.5s infinite; }
   @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: .4; } }
+  .clickable { cursor: pointer; transition: transform .15s, box-shadow .15s; }
+  .clickable:hover { transform: translateY(-1px); box-shadow: 0 4px 16px rgba(0,0,0,.12); }
+  .exception-list { display: grid; gap: 8px; }
+  .exception-item { display: flex; gap: 12px; align-items: center; padding: 11px 12px; border: 1px solid var(--border); border-radius: 6px; background: #fff; }
+  .exception-item .detail { flex: 1; min-width: 0; }
+  .exception-item .title { font-size: 13px; font-weight: 600; }
+  .exception-item .meta { margin-top: 3px; color: var(--text-3); font-size: 11px; word-break: break-all; }
+  .inline-status { height: 27px; border: 1px solid var(--border); border-radius: 4px; padding: 0 5px; background: #fff; font-size: 12px; }
+  tr.row-selected { background: #ecf5ff; }
+  .company-grid { display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:12px; }
+  .company-card { border:1px solid var(--border);border-radius:8px;padding:14px;background:#fff; }
+  .company-card-head { display:flex;justify-content:space-between;gap:10px;align-items:flex-start;margin-bottom:10px; }
+  .progress-track { height:7px;background:#eef1f5;border-radius:5px;overflow:hidden;margin:8px 0; }
+  .progress-value { height:100%;background:var(--success); }
+  .admin-row { display:flex;gap:8px;align-items:center;padding:8px 0;border-bottom:1px solid #f0f2f5;flex-wrap:wrap; }
+  .avatar-thumb { width:36px;height:36px;border-radius:7px;object-fit:cover;border:1px solid var(--border);background:#f5f7fa;display:block; }
+  .avatar-preview { display:flex;align-items:center;gap:10px;margin-top:6px;color:var(--text-3);font-size:12px; }
 
   @media (max-width: 768px) {
     .sidebar { width: 60px; }
@@ -194,8 +216,9 @@
 <div class="login-mask" id="loginMask">
   <div class="login-box">
     <h2>小程序备案系统</h2>
-    <div class="sub">请输入访问密码</div>
-    <input type="password" id="loginPwd" placeholder="访问密码" onkeydown="if(event.key==='Enter')doLogin()">
+    <div class="sub">请输入管理员账号和密码</div>
+    <input type="text" id="loginUser" placeholder="用户名" value="admin" autocomplete="username">
+    <input type="password" id="loginPwd" placeholder="密码" autocomplete="current-password" onkeydown="if(event.key==='Enter')doLogin()">
     <button onclick="doLogin()">登 录</button>
     <div class="err" id="loginErr"></div>
   </div>
@@ -208,20 +231,27 @@
       <button class="sidebar-toggle" onclick="toggleSidebar()" title="折叠/展开">‹</button>
     </div>
     <nav class="nav-list">
-      <div class="nav-item active" data-page="dashboard" onclick="switchPage('dashboard')">
+      <div class="nav-item active super-only" data-page="dashboard" onclick="switchPage('dashboard')">
         <span class="icon">🏠</span><span class="nav-text">首页看板</span>
       </div>
+      <div class="nav-item" data-page="companies" onclick="switchPage('companies')">
+        <span class="icon">🏢</span><span class="nav-text">公司列表</span>
+      </div>
       <div class="nav-item" data-page="data" onclick="switchPage('data')">
-        <span class="icon">📊</span><span class="nav-text">数据管理</span>
+        <span class="icon">📊</span><span class="nav-text">明细</span>
       </div>
       <div class="nav-item" data-page="email" onclick="switchPage('email')">
         <span class="icon">📧</span><span class="nav-text">邮箱列表</span>
       </div>
-      <div class="nav-item" data-page="monitor" onclick="switchPage('monitor')">
+      <div class="nav-item super-only" data-page="monitor" onclick="switchPage('monitor')">
         <span class="icon">🔔</span><span class="nav-text">监控配置</span>
+      </div>
+      <div class="nav-item super-only" data-page="exceptions" onclick="switchPage('exceptions')">
+        <span class="icon">⚠️</span><span class="nav-text">异常工作台</span>
       </div>
     </nav>
     <div class="sidebar-foot">
+      <div class="foot-text" id="currentUserLabel"></div>
       <div class="foot-text">共 <span class="total" id="totalCount">0</span> 条</div>
       <button class="btn ghost sm sidebar-logout" onclick="logout()">退出</button>
     </div>
@@ -238,6 +268,7 @@
         </div>
       </div>
       <div class="stats" id="dashboardStats"></div>
+      <div class="stats" id="exceptionStats"></div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px;">
         <div class="section" style="margin-bottom:0;">
           <h2>🏢 公司分布 <span class="desc">按公司统计数量</span></h2>
@@ -250,7 +281,7 @@
       </div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px;">
         <div class="section" style="margin-bottom:0;border-left:3px solid var(--warning);">
-          <h2 style="color:var(--warning);">⏰ 本周预计审核通过 <span class="desc">提交时间+8天落本周</span></h2>
+          <h2 style="color:var(--warning);">⏰ 本周预计备案完成 <span class="desc">提交时间+8天落本周</span></h2>
           <div id="expectedWeek"></div>
         </div>
         <div class="section" style="margin-bottom:0;border-left:3px solid var(--danger);">
@@ -269,14 +300,32 @@
       </div>
     </div>
 
+    <!-- ===== 公司列表页 ===== -->
+    <div class="page" id="page-companies">
+      <div class="header-row">
+        <h1>公司列表</h1>
+        <div class="actions"><button class="btn ghost sm" onclick="loadCompanyManagement()">刷新</button></div>
+      </div>
+      <div class="section super-only" id="adminManagement">
+        <h2>分级管理员 <span class="desc">创建账号、重置密码或停用账号</span></h2>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px;">
+          <input id="newAdminUsername" type="text" placeholder="用户名" style="height:34px;border:1px solid var(--border);border-radius:5px;padding:0 10px;">
+          <input id="newAdminPassword" type="password" placeholder="初始密码（至少6位）" style="height:34px;border:1px solid var(--border);border-radius:5px;padding:0 10px;">
+          <button class="btn success sm" onclick="createSubadmin()">创建分级管理员</button>
+        </div>
+        <div id="adminList"></div>
+      </div>
+      <div class="company-grid" id="companyCards"></div>
+    </div>
+
     <!-- ===== 数据管理页 ===== -->
     <div class="page" id="page-data">
       <div class="header-row">
         <h1>小程序备案数据</h1>
         <div class="actions">
           <button class="btn success sm" onclick="openAdd()">+ 新增</button>
-          <button class="btn ghost sm" onclick="document.getElementById('recordImportFile').click()">⬆ 导入</button>
-          <input type="file" id="recordImportFile" accept=".csv,.txt,.xlsx" style="display:none;" onchange="importRecords(event)">
+          <button class="btn ghost sm" onclick="document.getElementById('nameImportFile').click()">⬆ 导入小程序名称</button>
+          <input type="file" id="nameImportFile" accept=".xlsx,.xls" style="display:none;" onchange="prepareNameImport(event)">
           <button class="btn ghost sm" onclick="exportJSON()">导出</button>
         </div>
       </div>
@@ -287,11 +336,13 @@
         <input type="text" id="search" placeholder="搜索..." style="flex:0 1 200px;">
       </div>
       <div class="sel-bar" id="selBar" style="display:none;">
-        <span>已选 <span class="sel-count" id="selCount">0</span> 个单元格</span>
+        <span>已选 <span class="sel-count" id="selCount">0</span> 个单元格 / <span class="sel-count" id="rowSelCount">0</span> 条记录</span>
         <button class="btn sm" onclick="copySelectedCells()">📋 复制选中</button>
         <button class="btn ghost sm" onclick="selectEntireTable()">全选当前页</button>
         <button class="btn ghost sm" onclick="clearCellSelection()">清除选择</button>
-        <span style="color:var(--text-3);">提示：点击选单元格，Ctrl+点击多选，Shift+点击范围选</span>
+        <select id="bulkStatus" class="inline-status"><option value="">批量改状态</option></select>
+        <button class="btn warning sm" onclick="bulkUpdateStatus()">应用到所选记录</button>
+        <span style="color:var(--text-3);">提示：勾选记录可批量修改；单元格支持 Ctrl / Shift 多选</span>
       </div>
       <div class="table-wrap">
         <table>
@@ -309,7 +360,7 @@
     <div class="page" id="page-email">
       <div class="header-row">
         <h1>邮箱列表</h1>
-        <div class="actions">
+        <div class="actions super-only">
           <button class="btn ghost sm" onclick="document.getElementById('emailImportFile').click()">⬆ 导入邮箱</button>
           <input type="file" id="emailImportFile" accept=".txt,.csv,.json" style="display:none;" onchange="importEmails(event)">
           <button class="btn success sm" onclick="openAddEmail()">+ 新增邮箱</button>
@@ -335,7 +386,7 @@
         <h1>监控配置</h1>
         <div class="actions">
           <button class="btn sm" onclick="saveMonitorConfig()">保存配置</button>
-          <button class="btn success sm" onclick="runCheckAll()">立即检测</button>
+          <button class="btn success sm" onclick="runCheckAll(this)">立即检测</button>
         </div>
       </div>
       <div class="monitor-status-bar">
@@ -351,7 +402,23 @@
         </div>
       </div>
       <div class="help-tip">
-        ℹ️ <strong>监控机制</strong>：通过 apihz.cn 小程序备案查询 API，每次仅查询数量并对比历史记录。发现数量增加即标记"有新增"。每次调用消耗 10 盟点（约0.01元），调用失败不重试、不更新数量。
+        ℹ️ <strong>监控机制</strong>：检测、备案比对与钉钉通知均由后端统一执行；本页只负责配置和发起任务。
+      </div>
+      <div class="section config-section">
+        <div class="section-title">🔄 乙方平台同步</div>
+        <div style="display:flex;gap:8px;align-items:end;flex-wrap:wrap;">
+          <div class="form-item" style="width:150px;">
+            <label>自动同步间隔（天）</label>
+            <input type="number" id="vendorSyncDays" min="1" max="365" value="1">
+          </div>
+          <button class="btn sm" onclick="saveVendorSettings()">保存天数</button>
+          <button class="btn success sm" onclick="runVendorAction('sync',this)">立即同步</button>
+          <button class="btn ghost sm" onclick="runVendorAction('match',this)">立即匹配</button>
+          <span id="vendorSyncStatus" style="font-size:12px;color:var(--text-3);"></span>
+        </div>
+        <div class="help-tip" style="margin-top:8px;margin-bottom:0;font-size:11px;">
+          自动同步和立即同步只导入新增企业；立即匹配只补齐现有小程序的空字段，不覆盖已有资料。
+        </div>
       </div>
       <div class="section config-section">
         <div class="section-title">🔑 apihz API 配置（备案查询接口）</div>
@@ -370,9 +437,6 @@
           <div class="form-item"><label>加签密钥（SEC开头，可选）</label><input type="password" id="cfg_ding_secret" placeholder="如 SECxxxxxxxx" onchange="autoSaveMonitor()"></div>
           <div class="form-item"><label>通知关键词（安全设置，默认备案监控）</label><input type="text" id="cfg_ding_keyword" placeholder="备案监控" onchange="autoSaveMonitor()"></div>
         </div>
-        <div style="margin-top:8px;display:flex;gap:6px;flex-wrap:wrap;align-items:center;">
-          <button class="btn warning sm" onclick="testDingTalk()">📨 测试钉钉通知</button>
-        </div>
         <div class="help-tip" style="margin-top:8px;margin-bottom:0;font-size:11px;">
           钉钉群 → 群设置 → 智能群助手 → 添加机器人 → 自定义。安全设置选"加签"或"自定义关键词"。发现新增备案时自动推送通知到群。
         </div>
@@ -389,6 +453,31 @@
           <input type="time" id="newTime" value="12:00" style="width:80px;height:32px;border:1px solid var(--border);border-radius:5px;padding:0 6px;font-size:13px;">
           <button class="btn ghost sm" onclick="addTime()">+ 添加时间</button>
         </div>
+      </div>
+    </div>
+
+    <!-- ===== 异常工作台 ===== -->
+    <div class="page" id="page-exceptions">
+      <div class="header-row">
+        <h1>异常工作台</h1>
+        <div class="actions"><button class="btn ghost sm" onclick="refreshWorkbench()">刷新</button></div>
+      </div>
+      <div class="stats" id="workbenchStats"></div>
+      <div class="section">
+        <h2>⚠️ 开放异常 <span class="desc">可一键标记为已解决</span></h2>
+        <div class="exception-list" id="openExceptionList"></div>
+      </div>
+      <div class="section">
+        <h2>🔄 同步 / 检测状态</h2>
+        <div id="syncFailureList"></div>
+      </div>
+      <div class="section">
+        <h2>📝 待补资料</h2>
+        <div class="exception-list" id="pendingInfoList"></div>
+      </div>
+      <div class="section">
+        <h2>最近操作 <span class="desc">误操作可撤销</span></h2>
+        <div class="exception-list" id="recentAuditList"></div>
       </div>
     </div>
 
@@ -414,17 +503,43 @@
   </div>
 </div>
 
+<div class="modal-mask" id="nameImportModal">
+  <div class="modal" style="width:720px;">
+    <div class="modal-head"><h3>导入小程序名称</h3><span class="close" onclick="closeNameImportModal()">&times;</span></div>
+    <div class="modal-body">
+      <div class="form-item full">
+        <label>公司简称（应用到本次所有新增记录）</label>
+        <input type="text" id="nameImportCompany" list="companyShortList" placeholder="例如：圣杰科技">
+        <datalist id="companyShortList"></datalist>
+      </div>
+      <div class="import-summary">
+        <span>工作表：<strong id="nameImportSheet">—</strong></span>
+        <span>读取名称：<strong id="nameImportTotal">0</strong></span>
+        <span>可同步：<strong id="nameImportNew">0</strong></span>
+        <span>冲突/重复：<strong id="nameImportDuplicate">0</strong></span>
+      </div>
+      <div class="help-tip" style="margin-bottom:10px;">
+        支持名称、公司、AppID、原始ID、简介、类目、管理员、状态、邮箱、密钥等列；按 AppID 优先、名称兜底匹配。新增记录默认状态为“待注册”。
+      </div>
+      <div class="import-preview">
+        <table>
+          <thead><tr><th style="width:60px;">序号</th><th>小程序名称</th><th style="width:100px;">处理</th></tr></thead>
+          <tbody id="nameImportPreviewBody"></tbody>
+        </table>
+      </div>
+    </div>
+    <div class="modal-foot">
+      <button class="btn ghost sm" onclick="closeNameImportModal()">取消</button>
+      <button class="btn success sm" id="confirmNameImportBtn" onclick="confirmNameImport()">确认新增</button>
+    </div>
+  </div>
+</div>
+
 <datalist id="unusedEmailList"></datalist>
 <div class="toast" id="toast"></div>
 
-<script src="data.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <script>
-const ACCESS_PASSWORD = 'wudi2026';
-const STORAGE_KEY = 'laingzizhiwang_local_records';
-const MONITOR_CONFIG_KEY = 'laingzizhiwang_monitor_config';
-const EMAIL_STORAGE_KEY = 'laingzizhiwang_email_list';
-const SESSION_KEY = 'laingzizhiwang_authed';
-
 const DEFAULT_MONITOR_CONFIG = {
   apihz: { id: '', key: '' },
   dingtalk: { webhook: '', secret: '', keyword: '备案监控' },
@@ -442,102 +557,190 @@ const DEFAULT_MONITOR_CONFIG = {
   times: ['11:00', '13:00', '15:00', '18:00', '20:00']
 };
 
-// ============ 跨设备配置同步（后端API + 本地降级） ============
-// 邮箱与监控配置通过后端 API 持久化，实现多设备同步；
-// 后端不可用时（如本地预览）自动降级到 localStorage。
-const API_TOKEN = ACCESS_PASSWORD;
-let _useApi = false;            // 后端是否可用
+// ============ 服务器数据同步（后端 API 为唯一数据源） ============
+let _useApi = false;
 let _emailsCache = null;        // 邮箱内存缓存
 let _monitorCache = null;       // 监控配置内存缓存
-let _approvedProgramsCache = []; // 已备案小程序名单（由定时/立即检测同步）
+let _recordsCache = [];         // programs 是唯一台账
+let _statusCache = null;
+let _exceptionsCache = [];
+let _auditCache = [];
+let _sessionUser = null;
+let _companiesCache = [];
+let _adminsCache = [];
+let _emailsSaving = false;
+let _monitorSaveQueue = Promise.resolve();
+let _monitorSaveVersion = 0;
 
-async function apiGet(path){
-  const r = await fetch(path, { headers: { 'X-Auth': API_TOKEN } });
-  if (!r.ok) throw new Error('API ' + r.status);
-  const d = await r.json();
-  return d.data;
+async function apiRequest(path, options){
+  const opts = Object.assign({ credentials: 'same-origin' }, options || {});
+  if (Object.prototype.hasOwnProperty.call(opts, 'data')) {
+    opts.method = opts.method || 'POST';
+    opts.headers = Object.assign({ 'Content-Type': 'application/json' }, opts.headers || {});
+    opts.body = JSON.stringify(opts.data);
+    delete opts.data;
+  }
+  let r;
+  try { r = await fetch(path, opts); }
+  catch(e) { throw new Error('网络连接失败：' + e.message); }
+  let payload = null;
+  try { payload = await r.json(); } catch(_) {}
+  if (!r.ok) {
+    const msg = payload && (payload.message || payload.error);
+    const err = new Error(msg || ('请求失败（HTTP ' + r.status + '）'));
+    err.status = r.status;
+    throw err;
+  }
+  return payload && Object.prototype.hasOwnProperty.call(payload, 'data') ? payload.data : payload;
 }
-async function apiPost(path, data){
-  const r = await fetch(path, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'X-Auth': API_TOKEN },
-    body: JSON.stringify({ data: data })
-  });
-  if (!r.ok) throw new Error('API ' + r.status);
+function apiGet(path){ return apiRequest(path); }
+function apiPost(path, data){ return apiRequest(path, { method: 'POST', data: data }); }
+function apiPatch(path, data){ return apiRequest(path, { method: 'PATCH', data: data }); }
+function apiDelete(path){ return apiRequest(path, { method: 'DELETE' }); }
+
+async function loadAllPrograms(){
+  const items = [];
+  let remotePage = 1, total = Infinity;
+  while (items.length < total) {
+    const result = await apiGet('/api/programs?page=' + remotePage + '&pageSize=200');
+    if (!result || !Array.isArray(result.items)) throw new Error('小程序列表响应格式不正确');
+    items.push(...result.items);
+    total = Number(result.total);
+    if (!Number.isFinite(total)) total = items.length;
+    if (!result.items.length || remotePage * 200 >= total) break;
+    remotePage++;
+  }
+  _recordsCache = items;
 }
-// 启动时加载远程配置；后端不可用则降级到 localStorage
+
+// 启动时分页加载全部小程序以及兼容配置
 async function initRemoteConfig(){
-  // 先读本地缓存作为基础（防止后端空数据覆盖本地已有配置）
-  const localEmails = (() => { try { return JSON.parse(localStorage.getItem(EMAIL_STORAGE_KEY) || '[]'); } catch(_) { return []; } })();
-  const localMonitor = (() => { try { return JSON.parse(localStorage.getItem(MONITOR_CONFIG_KEY) || 'null') || JSON.parse(JSON.stringify(DEFAULT_MONITOR_CONFIG)); } catch(_) { return JSON.parse(JSON.stringify(DEFAULT_MONITOR_CONFIG)); } })();
-  _emailsCache = localEmails;
-  _monitorCache = localMonitor;
   try {
-    const [emails, monitor, approvedPrograms] = await Promise.all([
+    const base = await Promise.all([
       apiGet('/api/emails'),
-      apiGet('/api/monitor'),
-      apiGet('/api/approved-programs')
+      loadAllPrograms(),
+      apiGet('/api/companies')
     ]);
     _useApi = true;
-    _approvedProgramsCache = Array.isArray(approvedPrograms) ? approvedPrograms : [];
-    // 后端有数据 → 用后端的；后端无数据 → 保留本地并反向同步到后端
-    if (Array.isArray(emails) && emails.length > 0) {
-      _emailsCache = emails;
-      localStorage.setItem(EMAIL_STORAGE_KEY, JSON.stringify(_emailsCache));
-    } else if (localEmails.length > 0) {
-      apiPost('/api/emails', localEmails).catch(()=>{});
-    }
-    if (monitor) {
-      _monitorCache = monitor;
-      localStorage.setItem(MONITOR_CONFIG_KEY, JSON.stringify(_monitorCache));
+    _emailsCache = Array.isArray(base[0]) ? base[0] : [];
+    _companiesCache = Array.isArray(base[2]) ? base[2] : [];
+    if (isSuper()) {
+      const adminValues = await Promise.all([
+        apiGet('/api/monitor'), apiGet('/api/admin-users')
+      ]);
+      _monitorCache = adminValues[0] || JSON.parse(JSON.stringify(DEFAULT_MONITOR_CONFIG));
+      _adminsCache = Array.isArray(adminValues[1]) ? adminValues[1] : [];
+      await Promise.all([refreshWorkbench(), loadVendorSettings()]);
     } else {
-      apiPost('/api/monitor', localMonitor).catch(()=>{});
+      _monitorCache = JSON.parse(JSON.stringify(DEFAULT_MONITOR_CONFIG));
+      _adminsCache = [];
     }
-    console.log('后端已连接，配置已同步');
   } catch(e) {
-    console.warn('后端不可用，使用本地存储:', e.message);
     _useApi = false;
+    throw new Error('服务器数据加载失败：' + e.message);
   }
 }
 
 const COLS = [
-  { key: 'companyName', label: '公司', type: 'text', sortable: true, form: { type: 'select', options: ['', '圣杰科技', '晟锋智联', '追影科技', '伴戏科技', '暖剧科技', '张家口乐强农业科技', '京宝芯联科技', '智承万兴科技', '文智化贤'] } },
+  { key: 'companyName', label: '公司', type: 'text', sortable: true, form: { type: 'select', options: [] } },
   { key: 'miniProgramName', label: '小程序名称', type: 'copy', sortable: true, form: { type: 'text' } },
-  { key: 'description', label: '简介', type: 'text', sortable: true, form: { type: 'text' }, tableShow: false },
+  { key: 'avatarUrl', label: '头像', type: 'avatar', form: { type: 'text' } },
+  { key: 'description', label: '简介', type: 'text', sortable: true, form: { type: 'textarea' }, tableShow: false },
   { key: 'category', label: '类目', type: 'text', sortable: true, form: { type: 'text' }, tableShow: false },
   { key: 'appid', label: 'AppID', type: 'copy', sortable: true, form: { type: 'text' } },
   { key: 'originalId', label: '原始ID', type: 'copy', form: { type: 'text' } },
   { key: 'secret', label: '密钥', type: 'copy', form: { type: 'textarea' } },
   { key: 'admin', label: '管理员', sortable: true, form: { type: 'text' } },
-  { key: 'status', label: '状态', type: 'status', sortable: true, form: { type: 'select', options: ['', '待审核', '审核中', '审核通过', '备案完成', '待注册', '待验收', '已验收'] } },
+  { key: 'status', label: '状态', type: 'status', sortable: true, form: { type: 'select', options: ['待注册', '待审核', '备案中', '备案完成', '已结算'] } },
   { key: 'email', label: '邮箱', type: 'mono', form: { type: 'text' } },
-  { key: 'miniProgramPassword', label: '小程序密码', type: 'copy', form: { type: 'text' } },
+  { key: 'miniProgramPassword', label: '小程序密码', type: 'copy', form: { type: 'text' }, tableShow: false },
   { key: 'submitDate', label: '提交时间', type: 'date', sortable: true, form: { type: 'date' }, formShow: false }
 ];
-const STATUS_LIST = ['待审核','审核中','审核通过','备案完成','待注册','待验收','已验收'];
+const STATUS_LIST = ['待注册','待审核','备案中','备案完成','已结算'];
+const DEFAULT_STATUS = '待注册';
 const OP_COL = { key: '_op', label: '操作', type: 'op' };
-// 状态排序优先级：待注册 > 待验收 > 审核中 > 待审核 > 审核通过 > 备案完成 > 已验收（需处理项靠前，已完成项靠后）
-const STATUS_ORDER = { '待注册': 0, '待验收': 1, '审核中': 2, '待审核': 3, '审核通过': 4, '备案完成': 5, '已验收': 6 };
+// 状态排序优先级：待注册 > 待审核 > 备案中 > 备案完成 > 已结算（需处理项靠前，已完成项靠后）
+const STATUS_ORDER = { '待注册': 0, '待审核': 1, '备案中': 2, '备案完成': 3, '已结算': 4 };
 function getStatusOrder(s){ return STATUS_ORDER[s] != null ? STATUS_ORDER[s] : 99; }
 
 let sortKey = null, sortDesc = false, page = 1, pageSize = 20, editingId = null;
 
-function doLogin(){
-  if (document.getElementById('loginPwd').value === ACCESS_PASSWORD) { sessionStorage.setItem(SESSION_KEY, '1'); showApp(); }
-  else { document.getElementById('loginErr').textContent = '密码错误'; document.getElementById('loginPwd').value = ''; }
+function isSuper(){ return !!(_sessionUser && _sessionUser.role === 'super'); }
+
+async function doLogin(){
+  const username = document.getElementById('loginUser').value.trim();
+  const input = document.getElementById('loginPwd');
+  const password = input.value;
+  const err = document.getElementById('loginErr');
+  if (!username || !password) { err.textContent = '请输入用户名和密码'; return; }
+  err.textContent = '';
+  try {
+    const result = await apiPost('/api/login', { username: username, password: password });
+    _sessionUser = result && result.user;
+    input.value = '';
+    await showApp();
+  } catch(e) {
+    err.textContent = e.message;
+    input.value = '';
+  }
 }
-function logout(){ sessionStorage.removeItem(SESSION_KEY); location.reload(); }
-async function showApp(){ document.getElementById('loginMask').style.display = 'none'; document.getElementById('layout').style.display = 'flex'; await initRemoteConfig(); init(); }
-function checkAuth(){ if (sessionStorage.getItem(SESSION_KEY) === '1') showApp(); }
+async function logout(){
+  try { await apiPost('/api/logout', {}); }
+  catch(e) { showToast('退出请求失败：' + e.message, 'error'); return; }
+  location.reload();
+}
+async function showApp(){
+  document.getElementById('loginMask').style.display = 'none';
+  document.getElementById('layout').style.display = 'flex';
+  try {
+    if (!_sessionUser) {
+      const session = await apiGet('/api/session');
+      _sessionUser = session && session.user;
+    }
+    applyRoleUI();
+    await initRemoteConfig();
+    init();
+  } catch(e) {
+    document.getElementById('layout').style.display = 'none';
+    document.getElementById('loginMask').style.display = 'flex';
+    document.getElementById('loginErr').textContent = e.message;
+  }
+}
+async function checkAuth(){
+  try {
+    const session = await apiGet('/api/session');
+    if (session && session.authenticated) {
+      _sessionUser = session.user;
+      await showApp();
+    }
+  } catch(e) {
+    if (e.status !== 403 && e.status !== 401) document.getElementById('loginErr').textContent = e.message;
+  }
+}
+
+function applyRoleUI(){
+  const superUser = isSuper();
+  document.querySelectorAll('.super-only').forEach(el => { el.style.display = superUser ? '' : 'none'; });
+  document.getElementById('currentUserLabel').textContent =
+    (_sessionUser ? _sessionUser.username : '') + (superUser ? '（总管理员）' : '（分级管理员）');
+  document.querySelectorAll('.page,.nav-item').forEach(el => el.classList.remove('active'));
+  const firstPage = superUser ? 'dashboard' : 'companies';
+  document.getElementById('page-' + firstPage).classList.add('active');
+  document.querySelector('.nav-item[data-page="' + firstPage + '"]').classList.add('active');
+}
 
 function switchPage(name){
+  const nav = document.querySelector('.nav-item[data-page="' + name + '"]');
+  if (!nav || nav.style.display === 'none') return;
   document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
   document.querySelectorAll('.nav-item').forEach(t => t.classList.remove('active'));
   document.getElementById('page-' + name).classList.add('active');
-  document.querySelector('.nav-item[data-page="' + name + '"]').classList.add('active');
+  nav.classList.add('active');
   if (name === 'monitor') { loadMonitorConfigToForm(); updateMonitorStats(); }
   if (name === 'email') renderEmailList();
   if (name === 'dashboard') renderDashboard();
+  if (name === 'exceptions') renderWorkbench();
+  if (name === 'companies') renderCompanyManagement();
 }
 
 function toggleSidebar(){
@@ -545,33 +748,130 @@ function toggleSidebar(){
   document.getElementById('main').classList.toggle('collapsed');
 }
 
-function getLocalRecords(){ try { return JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]'); } catch(e) { return []; } }
-function setLocalRecords(arr){ localStorage.setItem(STORAGE_KEY, JSON.stringify(arr)); }
+function getLocalRecords(){
+  return Array.isArray(_recordsCache) ? JSON.parse(JSON.stringify(_recordsCache)) : [];
+}
 function getAllRecords(){
-  const local = getLocalRecords();
-  const localMap = {};
-  local.forEach(r => { localMap[r._localId] = r; });
-  const merged = RECORDS.map(r => {
-    const local = localMap[r.id];
-    if (local && local._deleted) return null;
-    if (local && local._type === 'edit') return Object.assign({}, r, local, { id: r.id });
-    return r;
-  }).filter(Boolean);
-  local.filter(r => r._type === 'add').forEach(r => { merged.push(Object.assign({}, r, { id: r._localId })); });
-  // 小程序名称全局唯一，仅按名称匹配备案完成状态
-  const approvedNames = new Set((_approvedProgramsCache || [])
-    .map(x => String((x && x.miniProgramName) || '').trim())
-    .filter(Boolean));
-  return merged.map(r => {
-    const name = String(r.miniProgramName || '').trim();
-    if (name && approvedNames.has(name) && r.status !== '备案完成') {
-      return Object.assign({}, r, { status: '备案完成', submitDate: null });
-    }
-    return r;
-  });
+  return getLocalRecords();
+}
+function getCompanyOptions(){
+  const names = new Set(['']);
+  if (isSuper()) {
+    (getMonitorConfig().companies || []).forEach(c => { if (c.name) names.add(c.name); });
+  } else {
+    (_companiesCache || []).forEach(c => { if (c.name) names.add(c.name); });
+  }
+  getAllRecords().forEach(r => { if (r.companyName) names.add(r.companyName); });
+  return Array.from(names);
+}
+
+async function loadCompanyManagement(){
+  try {
+    const requests = [apiGet('/api/companies')];
+    if (isSuper()) requests.push(apiGet('/api/admin-users'));
+    const values = await Promise.all(requests);
+    _companiesCache = Array.isArray(values[0]) ? values[0] : [];
+    if (isSuper()) _adminsCache = Array.isArray(values[1]) ? values[1] : [];
+    renderCompanyManagement();
+  } catch(e) { showToast('公司列表加载失败：' + e.message, 'error'); }
+}
+
+function renderCompanyManagement(){
+  const admins = (_adminsCache || []).filter(x => x.role === 'subadmin');
+  const adminList = document.getElementById('adminList');
+  if (adminList && isSuper()) {
+    adminList.innerHTML = admins.length ? admins.map(user => `
+      <div class="admin-row">
+        <strong style="min-width:120px;">${esc(user.username)}</strong>
+        <span class="tag">${user.active ? '已启用' : '已停用'}</span>
+        <span class="muted">负责 ${Number(user.companyCount || 0)} 家公司</span>
+        <button class="btn ghost sm" onclick="resetSubadminPassword(${Number(user.id)})">重置密码</button>
+        <button class="btn ${user.active ? 'warning' : 'success'} sm" onclick="toggleSubadmin(${Number(user.id)},${user.active ? 'false' : 'true'})">${user.active ? '停用' : '启用'}</button>
+      </div>`).join('') : '<div class="muted">尚未创建分级管理员</div>';
+  }
+  const cards = document.getElementById('companyCards');
+  const activeAdmins = admins.filter(x => x.active);
+  cards.innerHTML = (_companiesCache || []).length ? _companiesCache.map(company => {
+    const statusText = Object.entries(company.statusCounts || {}).map(x => `${esc(x[0])} ${Number(x[1])}`).join(' · ') || '暂无小程序';
+    const assignment = isSuper() ? `<select class="inline-status" onchange="assignCompany(${Number(company.id)},this.value)">
+      <option value="">未分配</option>${activeAdmins.map(user => `<option value="${Number(user.id)}" ${Number(company.assignedAdminId)===Number(user.id)?'selected':''}>${esc(user.username)}</option>`).join('')}
+    </select>` : `<span class="muted">负责人：${esc(company.assignedAdminUsername || (_sessionUser && _sessionUser.username) || '')}</span>`;
+    return `<div class="company-card">
+      <div class="company-card-head"><div><strong>${esc(company.name)}</strong><div class="muted">${esc(company.fullName || '')}</div></div>${assignment}</div>
+      <div><strong>${Number(company.programCount || 0)}</strong> 个小程序，完成 ${Number(company.completedCount || 0)} 个</div>
+      <div class="progress-track"><div class="progress-value" style="width:${Math.max(0,Math.min(100,Number(company.progress||0)))}%"></div></div>
+      <div class="muted">${statusText}</div>
+      <div style="margin-top:10px;"><button class="btn ghost sm" onclick="openCompanyDetails('${encodeURIComponent(company.name)}')">查看明细</button></div>
+    </div>`;
+  }).join('') : '<div class="muted">暂无可管理公司</div>';
+}
+
+async function createSubadmin(){
+  const username = document.getElementById('newAdminUsername').value.trim();
+  const password = document.getElementById('newAdminPassword').value;
+  if (!username || password.length < 6) { showToast('请输入用户名和至少6位初始密码', 'error'); return; }
+  try {
+    await apiPost('/api/admin-users', { username: username, password: password });
+    document.getElementById('newAdminUsername').value = '';
+    document.getElementById('newAdminPassword').value = '';
+    await loadCompanyManagement();
+    showToast('分级管理员已创建', 'success');
+  } catch(e) { showToast('创建失败：' + e.message, 'error'); }
+}
+
+async function resetSubadminPassword(id){
+  const user = (_adminsCache || []).find(x => Number(x.id) === Number(id));
+  const username = user ? user.username : '该账号';
+  const password = prompt('请输入 ' + username + ' 的新密码（至少6位）');
+  if (password == null) return;
+  if (password.length < 6) { showToast('密码至少需要6位', 'error'); return; }
+  try {
+    await apiPatch('/api/admin-users/' + id, { password: password });
+    showToast('密码已重置，旧会话已失效', 'success');
+  } catch(e) { showToast('重置失败：' + e.message, 'error'); }
+}
+
+async function toggleSubadmin(id, active){
+  try {
+    await apiPatch('/api/admin-users/' + id, { active: active });
+    await loadCompanyManagement();
+    showToast(active ? '账号已启用' : '账号已停用', 'success');
+  } catch(e) { showToast('操作失败：' + e.message, 'error'); }
+}
+
+async function assignCompany(companyId, value){
+  try {
+    await apiPatch('/api/companies/' + companyId + '/assign', { adminId: value || null });
+    await loadCompanyManagement();
+    showToast(value ? '公司已分配' : '已取消分配', 'success');
+  } catch(e) { showToast('分配失败：' + e.message, 'error'); await loadCompanyManagement(); }
+}
+
+function openCompanyDetails(encodedName){
+  const name = decodeURIComponent(encodedName);
+  switchPage('data');
+  document.getElementById('filterCompany').value = name;
+  page = 1;
+  renderBody();
 }
 
 function esc(s){ if(s==null) return ''; return String(s).replace(/[&<>"']/g, c=>({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c])); }
+function safeAvatarUrl(value){
+  const text = String(value || '').trim();
+  return /^https?:\/\//i.test(text) ? text : '';
+}
+function avatarHtml(value, preview){
+  const url = safeAvatarUrl(value);
+  const idAttr = preview ? ' id="avatarPreviewImage"' : '';
+  if (!url) return preview
+    ? '<span id="avatarPreviewEmpty">暂无有效头像 URL</span>'
+    : '<span class="muted">无头像</span>';
+  return `<img${idAttr} class="avatar-thumb" src="${esc(url)}" alt="小程序头像" referrerpolicy="no-referrer" onerror="this.style.display='none';this.nextElementSibling.style.display='inline';"><span class="muted" style="display:none;">加载失败</span>`;
+}
+function updateAvatarPreview(value){
+  const box = document.getElementById('avatarPreviewBox');
+  if (box) box.innerHTML = avatarHtml(value, true);
+}
 
 function copyText(text, el){
   clipWrite(text, function(){
@@ -661,18 +961,22 @@ function updateSelBar(){
   const bar = document.getElementById('selBar');
   const count = selectedCells.size;
   document.getElementById('selCount').textContent = count;
-  bar.style.display = count > 0 ? 'flex' : 'none';
+  document.getElementById('rowSelCount').textContent = selectedRows.size;
+  bar.style.display = count > 0 || selectedRows.size > 0 ? 'flex' : 'none';
 }
 
 function clearCellSelection(){
   selectedCells.clear(); anchorCell = null;
+  selectedRows.clear();
   applyCellHighlights(); updateSelBar();
+  document.querySelectorAll('#tbody input[type=checkbox]').forEach(el => el.checked = false);
+  document.querySelectorAll('#tbody tr.row-selected').forEach(el => el.classList.remove('row-selected'));
 }
 
 function selectEntireTable(){
   // 选中当前页所有数据单元格（不含操作列）
   const rows = currentPageList.length;
-  const cols = COLS.length; // 不含OP_COL
+  const cols = COLS.filter(c => c.tableShow !== false).length;
   selectedCells.clear();
   for (let r = 0; r < rows; r++)
     for (let c = 0; c < cols; c++)
@@ -697,7 +1001,7 @@ function copySelectedCells(){
     const record = currentPageList[r];
     for (let c = minC; c <= maxC; c++) {
       if (selectedCells.has(r + '-' + c)) {
-        const col = COLS[c];
+        const col = COLS.filter(x => x.tableShow !== false)[c];
         if (col && record) {
           const v = record[col.key];
           row.push(v != null ? String(v) : '');
@@ -735,7 +1039,7 @@ function getFiltered(){
       return 0;
     });
   } else {
-    // 默认按状态优先级排序：审核通过 > 待注册 > 审核中 > 待审核 > 已验收
+    // 默认按状态优先级排序：待注册 > 待审核 > 备案中 > 备案完成 > 已结算
     list.sort((a,b) => getStatusOrder(a.status) - getStatusOrder(b.status));
   }
   return list;
@@ -746,7 +1050,7 @@ function calcExpectedThisWeek(all, now){
   const weekStart = new Date(now); weekStart.setHours(0,0,0,0); weekStart.setDate(now.getDate() - day + 1);
   const weekEnd = new Date(weekStart); weekEnd.setDate(weekStart.getDate() + 6); weekEnd.setHours(23,59,59,999);
   return all.filter(r => {
-    if (r.status !== '审核中' || !r.submitDate) return false;
+    if (r.status !== '备案中' || !r.submitDate) return false;
     const submit = new Date(r.submitDate.split(' ')[0]);
     if (isNaN(submit)) return false;
     const expected = new Date(submit); expected.setDate(submit.getDate() + 8);
@@ -765,7 +1069,7 @@ function renderStats(){
   const statsEl = document.getElementById('stats');
   if (statsEl) {
     let html = `<div class="stat-card"><div class="num">${total}</div><div class="label">总记录</div></div>`;
-    html += `<div class="stat-card status-card" style="border-left:3px solid var(--warning);"><div class="num" style="color:var(--warning);">${expectedThisWeek}</div><div class="label">本周预计通过</div></div>`;
+    html += `<div class="stat-card status-card" style="border-left:3px solid var(--warning);"><div class="num" style="color:var(--warning);">${expectedThisWeek}</div><div class="label">本周预计备案完成</div></div>`;
     STATUS_LIST.forEach(s => { html += `<div class="stat-card status-card"><div class="num">${byStatus[s]}</div><div class="label">${s}</div></div>`; });
     statsEl.innerHTML = html;
   }
@@ -788,8 +1092,9 @@ function renderFilters(){
 }
 
 function renderHead(){
-  const allCols = [...COLS.filter(c => c.tableShow !== false), OP_COL];
+  const allCols = [{ key:'_select', type:'select' }, ...COLS.filter(c => c.tableShow !== false), OP_COL];
   document.getElementById('thead').innerHTML = allCols.map(c => {
+    if (c.type === 'select') return '<th class="op-col" style="width:36px;"><input type="checkbox" title="选择当前页" onchange="toggleCurrentPageRows(this.checked)"></th>';
     if (c.type === 'op') return `<th class="op-col">${c.label}</th>`;
     const arrow = sortKey === c.key ? (sortDesc ? '▼' : '▲') : '';
     const widthClass = c.key === 'secret' ? 'col-secret' : (c.key === 'email' ? 'col-email' : '');
@@ -805,7 +1110,19 @@ function toggleSort(key){
 let currentPageList = []; // 当前页数据
 // 单元格选择状态：Map<"rowIdx-colIdx", true>
 let selectedCells = new Map();
+let selectedRows = new Set();
 let anchorCell = null; // Shift范围选的起始单元格
+
+function toggleRow(id, checked){
+  if (checked) selectedRows.add(String(id)); else selectedRows.delete(String(id));
+  updateSelBar();
+  const row = Array.from(document.querySelectorAll('#tbody tr[data-id]')).find(el => el.dataset.id === String(id));
+  if (row) row.classList.toggle('row-selected', checked);
+}
+function toggleCurrentPageRows(checked){
+  currentPageList.forEach(r => checked ? selectedRows.add(String(r.id)) : selectedRows.delete(String(r.id)));
+  renderBody();
+}
 
 function renderBody(){
   const list = getFiltered();
@@ -815,14 +1132,17 @@ function renderBody(){
   const start = (page - 1) * pageSize;
   const pageList = list.slice(start, start + pageSize);
   currentPageList = pageList;
-  const allCols = [...COLS.filter(c => c.tableShow !== false), OP_COL];
+  const allCols = [{ key:'_select', type:'select' }, ...COLS.filter(c => c.tableShow !== false), OP_COL];
   // 清除选择（翻页后重置）
   selectedCells.clear(); anchorCell = null; updateSelBar();
   if (pageList.length === 0) {
     document.getElementById('tbody').innerHTML = '<tr class="empty"><td colspan="'+allCols.length+'">没有匹配的记录</td></tr>';
   } else {
     document.getElementById('tbody').innerHTML = pageList.map((r, rowIdx) => {
-      return '<tr>' + allCols.map((c, colIdx) => {
+      return `<tr data-id="${esc(r.id)}" class="${selectedRows.has(String(r.id)) ? 'row-selected' : ''}">` + allCols.map((c, colIdx) => {
+        if (c.type === 'select') {
+          return `<td><input type="checkbox" ${selectedRows.has(String(r.id)) ? 'checked' : ''} onclick="event.stopPropagation()" onchange="toggleRow('${esc(r.id)}',this.checked)"></td>`;
+        }
         if (c.type === 'op') {
           return '<td><div class="row-ops">' +
             `<button class="icon-btn-sm" onclick="openEdit('${esc(r.id)}')">编辑</button>` +
@@ -830,9 +1150,13 @@ function renderBody(){
             '</div></td>';
         }
         const v = r[c.key];
-        const display = (v == null || v === '') ? '<span class="muted">—</span>' :
-          (c.type === 'status') ? `<span class="tag tag-status-${esc(v)}">${esc(v)}</span>` : esc(v);
-        return `<td class="cell" data-r="${rowIdx}" data-c="${colIdx}" data-key="${c.key}" onclick="cellClick(event,${rowIdx},${colIdx})">${display}</td>`;
+        const display = c.type === 'avatar' ? avatarHtml(v, false) :
+          ((v == null || v === '') ? '<span class="muted">—</span>' :
+          (c.type === 'status')
+            ? `<select class="inline-status" onclick="event.stopPropagation()" onchange="quickUpdateStatus('${esc(r.id)}',this.value,this)">${STATUS_LIST.map(s => `<option value="${esc(s)}" ${s===v?'selected':''}>${esc(s)}</option>`).join('')}</select>`
+            : esc(v));
+        const cellColIdx = colIdx - 1;
+        return `<td class="cell" data-r="${rowIdx}" data-c="${cellColIdx}" data-key="${c.key}" onclick="cellClick(event,${rowIdx},${cellColIdx})">${display}</td>`;
       }).join('') + '</tr>';
     }).join('');
   }
@@ -845,6 +1169,7 @@ function renderBody(){
   pagesHtml += `<button onclick="goPage(${page+1})" ${page===totalPages?'disabled':''}>下一页</button>`;
   pagesHtml += `<button onclick="goPage(${totalPages})" ${page===totalPages?'disabled':''}>末页</button>`;
   document.getElementById('pages').innerHTML = pagesHtml;
+  updateSelBar();
 }
 
 function goPage(p){ page = p; renderBody(); }
@@ -859,9 +1184,14 @@ function openAdd(){
     const f = c.form;
     const fullWidth = (f.type === 'textarea') ? ' full' : '';
     let input;
-    if (f.type === 'select') input = `<select id="f_${c.key}">${f.options.map(o => `<option value="${esc(o)}">${esc(o)||'(空)'}</option>`).join('')}</select>`;
+    const options = c.key === 'companyName' ? getCompanyOptions() : f.options;
+    if (f.type === 'select') {
+      const defaultVal = c.key === 'status' ? DEFAULT_STATUS : '';
+      input = `<select id="f_${c.key}">${options.map(o => `<option value="${esc(o)}" ${o===defaultVal?'selected':''}>${esc(o)||'(空)'}</option>`).join('')}</select>`;
+    }
     else if (f.type === 'date') input = `<input type="date" id="f_${c.key}">`;
     else if (f.type === 'textarea') input = `<textarea id="f_${c.key}"></textarea>`;
+    else if (c.key === 'avatarUrl') input = `<input type="text" id="f_${c.key}" placeholder="https://..." oninput="updateAvatarPreview(this.value)"><div class="avatar-preview" id="avatarPreviewBox">${avatarHtml('', true)}</div>`;
     else if (c.key === 'email') input = `<input type="text" id="f_${c.key}" list="unusedEmailList" placeholder="输入或选择未使用邮箱">`;
     else input = `<input type="text" id="f_${c.key}">`;
     return `<div class="form-item${fullWidth}"><label>${c.label}</label>${input}</div>`;
@@ -882,9 +1212,11 @@ function openEdit(id){
     const val = r[c.key] || '';
     const fullWidth = (f.type === 'textarea') ? ' full' : '';
     let input;
-    if (f.type === 'select') input = `<select id="f_${c.key}">${f.options.map(o => `<option value="${esc(o)}" ${o===val?'selected':''}>${esc(o)||'(空)'}</option>`).join('')}</select>`;
+    const options = c.key === 'companyName' ? getCompanyOptions() : f.options;
+    if (f.type === 'select') input = `<select id="f_${c.key}">${options.map(o => `<option value="${esc(o)}" ${o===val?'selected':''}>${esc(o)||'(空)'}</option>`).join('')}</select>`;
     else if (f.type === 'date') { const dv = val ? val.split(' ')[0] : ''; input = `<input type="date" id="f_${c.key}" value="${esc(dv)}">`; }
     else if (f.type === 'textarea') input = `<textarea id="f_${c.key}">${esc(val)}</textarea>`;
+    else if (c.key === 'avatarUrl') input = `<input type="text" id="f_${c.key}" value="${esc(val)}" placeholder="https://..." oninput="updateAvatarPreview(this.value)"><div class="avatar-preview" id="avatarPreviewBox">${avatarHtml(val, true)}</div>`;
     else if (c.key === 'email') input = `<input type="text" id="f_${c.key}" list="unusedEmailList" value="${esc(val)}" placeholder="输入或选择未使用邮箱">`;
     else input = `<input type="text" id="f_${c.key}" value="${esc(val)}">`;
     return `<div class="form-item${fullWidth}"><label>${c.label}</label>${input}</div>`;
@@ -895,15 +1227,20 @@ function openEdit(id){
 
 function closeModal(){ document.getElementById('editModal').classList.remove('show'); }
 
-function saveRecord(){
-  const data = { _localId: editingId || ('local_' + Date.now() + '_' + Math.random().toString(36).slice(2,8)) };
+async function saveRecord(){
+  const data = {};
   COLS.forEach(c => { const el = document.getElementById('f_' + c.key); if (el) data[c.key] = el.value.trim() || null; });
+  if (!editingId && !data.email) {
+    const available = getUnusedEmails();
+    if (available.length) data.email = available[0].email;
+  }
+  if (!data.status) data.status = DEFAULT_STATUS;
   // 提交时间根据状态自动管理（表单中已隐藏）
   const today = new Date().toISOString().slice(0, 10);
-  if (data.status === '审核通过' || data.status === '备案完成' || data.status === '待验收' || data.status === '已验收') {
-    data.submitDate = null;  // 审核通过/备案完成/待验收/已验收 清空提交时间
-  } else if (data.status === '审核中') {
-    // 审核中：如果没有提交时间则填今天，已有则保留
+  if (data.status === '备案完成' || data.status === '已结算') {
+    data.submitDate = null;  // 备案完成/已结算 清空提交时间
+  } else if (data.status === '备案中') {
+    // 备案中：如果没有提交时间则填今天，已有则保留
     const existing = editingId ? (getAllRecords().find(r => r.id === editingId) || {}).submitDate : null;
     data.submitDate = existing || today;
   } else {
@@ -915,34 +1252,229 @@ function saveRecord(){
       data.submitDate = null;
     }
   }
-  const local = getLocalRecords();
-  if (editingId) {
-    const origIdx = local.findIndex(r => r._localId === editingId);
-    if (origIdx >= 0) local[origIdx] = Object.assign({}, local[origIdx], data);
-    else { data._type = 'edit'; local.push(data); }
-    showToast('已保存修改', 'success');
-  } else {
-    data._type = 'add'; local.push(data);
-    showToast('已新增记录', 'success');
+  const successMessage = editingId ? '已保存修改' : '已新增记录';
+  try {
+    const saved = editingId
+      ? await apiPatch('/api/programs/' + encodeURIComponent(editingId), data)
+      : await apiPost('/api/programs', data);
+    if (editingId) {
+      const idx = _recordsCache.findIndex(r => String(r.id) === String(editingId));
+      if (idx >= 0) _recordsCache[idx] = saved;
+    } else {
+      _recordsCache.push(saved);
+    }
+  } catch(e) {
+    showToast('提交失败：' + e.message, 'error');
+    return;
   }
-  setLocalRecords(local); closeModal(); render();
+  closeModal(); render();
+  showToast(successMessage, 'success');
   // 新邮箱自动同步到邮箱列表
-  if (data.email) {
-    const emailList = getEmails();
+  if (data.email && isSuper()) {
+    const emailList = getEmails().slice();
     if (!emailList.some(e => e.email === data.email)) {
       emailList.push({ email: data.email, _id: 'em_' + Date.now() + '_' + Math.random().toString(36).slice(2,8) });
-      setEmails(emailList);
+      try {
+        await setEmails(emailList);
+      } catch(e) {
+        showToast('数据已保存，但邮箱列表同步失败：' + e.message, 'error');
+      }
     }
   }
 }
 
-function deleteRecord(id){
+async function deleteRecord(id){
   if (!confirm('确认删除该记录？')) return;
-  const local = getLocalRecords();
-  const existingIdx = local.findIndex(r => r._localId === id);
-  if (existingIdx >= 0 && local[existingIdx]._type === 'add') local.splice(existingIdx, 1);
-  else local.push({ _localId: id, _deleted: true });
-  setLocalRecords(local); showToast('已删除', 'success'); render();
+  try {
+    await apiDelete('/api/programs/' + encodeURIComponent(id));
+    _recordsCache = _recordsCache.filter(r => String(r.id) !== String(id));
+    selectedRows.delete(String(id));
+  } catch(e) {
+    showToast('删除失败：' + e.message, 'error');
+    return;
+  }
+  showToast('已删除', 'success'); render(); renderDashboard(); renderWorkbench();
+}
+
+async function quickUpdateStatus(id, status, el){
+  const old = (_recordsCache.find(r => String(r.id) === String(id)) || {}).status || '';
+  el.disabled = true;
+  try {
+    const saved = await apiPatch('/api/programs/' + encodeURIComponent(id), { status: status });
+    const idx = _recordsCache.findIndex(r => String(r.id) === String(id));
+    if (idx >= 0) _recordsCache[idx] = saved;
+    renderStats(); renderDashboard(); renderWorkbench();
+    showToast('状态已更新', 'success');
+  } catch(e) {
+    el.value = old;
+    showToast('状态更新失败：' + e.message, 'error');
+  } finally { el.disabled = false; }
+}
+
+async function bulkUpdateStatus(){
+  const status = document.getElementById('bulkStatus').value;
+  if (!status) { showToast('请选择目标状态', 'error'); return; }
+  if (!selectedRows.size) { showToast('请先勾选记录', 'error'); return; }
+  const items = Array.from(selectedRows).map(id => ({ id: id, status: status }));
+  try {
+    const result = await apiPost('/api/programs/bulk', { items: items });
+    const savedItems = result && Array.isArray(result.items) ? result.items : [];
+    const byId = new Map(savedItems.map(r => [String(r.id), r]));
+    _recordsCache = _recordsCache.map(r => byId.get(String(r.id)) || r);
+    selectedRows.clear();
+    render(); renderDashboard(); renderWorkbench();
+    showToast('已批量更新 ' + items.length + ' 条记录', 'success');
+  } catch(e) { showToast('批量更新失败：' + e.message, 'error'); }
+}
+
+// ============ Excel 批量导入小程序名称 ============
+let _nameImportState = null;
+
+function normalizeImportedName(value){
+  return String(value == null ? '' : value).trim().replace(/\s+/g, ' ');
+}
+
+async function prepareNameImport(event){
+  const input = event.target;
+  const file = input.files && input.files[0];
+  if (!file) return;
+  try {
+    if (!window.XLSX) throw new Error('Excel解析组件加载失败，请刷新页面后重试');
+    if (file.size > 10 * 1024 * 1024) throw new Error('文件不能超过10MB');
+    const buffer = await file.arrayBuffer();
+    const workbook = XLSX.read(buffer, { type: 'array' });
+    const sheetName = workbook.SheetNames[0];
+    if (!sheetName) throw new Error('Excel中没有工作表');
+    const rows = XLSX.utils.sheet_to_json(workbook.Sheets[sheetName], {
+      header: 1, defval: '', blankrows: false, raw: false
+    });
+    if (!Array.isArray(rows) || rows.length === 0) throw new Error('工作表没有数据');
+
+    const headerMap = {
+      '名称':'miniProgramName','小程序名称':'miniProgramName','小程序名字':'miniProgramName',
+      '公司':'companyName','公司简称':'companyName','主体':'companyName',
+      '头像':'avatarUrl','头像url':'avatarUrl','小程序头像':'avatarUrl',
+      'appid':'appid','小程序appid':'appid','原始id':'originalId',
+      '简介':'description','类目':'category','管理员':'admin','状态':'status',
+      '邮箱':'email','密钥':'secret','secret':'secret','小程序密码':'miniProgramPassword',
+      '提交时间':'submitDate','提交日期':'submitDate'
+    };
+    let headerRow = -1, columns = {};
+    for (let r = 0; r < Math.min(rows.length, 10); r++) {
+      const cells = Array.isArray(rows[r]) ? rows[r] : [];
+      for (let c = 0; c < cells.length; c++) {
+        const header = String(cells[c] || '').trim().replace(/\s+/g, '').toLowerCase();
+        if (headerMap[header]) columns[headerMap[header]] = c;
+      }
+      if (columns.miniProgramName != null) { headerRow = r; break; }
+      columns = {};
+    }
+    if (headerRow < 0) throw new Error('前10行中未找到“名称 / 小程序名称 / 小程序名字”表头');
+
+    const imported = rows.slice(headerRow + 1).map(row => {
+      const record = {};
+      Object.entries(columns).forEach(([field, col]) => {
+        let value = Array.isArray(row) ? row[col] : '';
+        value = field === 'miniProgramName' ? normalizeImportedName(value) : String(value == null ? '' : value).trim();
+        if (value) record[field] = value;
+      });
+      return record;
+    }).filter(record => record.miniProgramName);
+    if (imported.length === 0) throw new Error('名称列中没有有效的小程序名称');
+    if (imported.length > 500) throw new Error('单次最多导入500条记录');
+
+    const existing = getAllRecords();
+    const byName = new Map(existing.filter(r => r.miniProgramName).map(r => [normalizeImportedName(r.miniProgramName), r]));
+    const byAppid = new Map(existing.filter(r => r.appid).map(r => [String(r.appid).trim(), r]));
+    const seen = new Set();
+    let fileDuplicateCount = 0;
+    const items = [];
+    imported.forEach(record => {
+      const key = record.appid ? 'appid:' + record.appid : 'name:' + record.miniProgramName;
+      if (seen.has(key)) { fileDuplicateCount++; return; }
+      seen.add(key);
+      const appMatch = record.appid ? byAppid.get(record.appid) : null;
+      const nameMatch = byName.get(record.miniProgramName);
+      const conflict = !!(appMatch && nameMatch && appMatch.id !== nameMatch.id);
+      const match = conflict ? null : (appMatch || nameMatch || null);
+      items.push({ name: record.miniProgramName, record: record, matchId: match && match.id, conflict: conflict });
+    });
+    const conflictCount = items.filter(x => x.conflict).length;
+    const syncCount = items.filter(x => !x.conflict).length;
+    _nameImportState = {
+      fileName: file.name,
+      sheetName: sheetName,
+      items: items,
+      totalCount: imported.length,
+      duplicateCount: conflictCount + fileDuplicateCount
+    };
+
+    const companies = [...new Set(getAllRecords().map(r => r.companyName).filter(Boolean))].sort();
+    document.getElementById('companyShortList').innerHTML =
+      companies.map(c => `<option value="${esc(c)}">`).join('');
+    document.getElementById('nameImportCompany').value = '';
+    document.getElementById('nameImportSheet').textContent = sheetName;
+    document.getElementById('nameImportTotal').textContent = imported.length;
+    document.getElementById('nameImportNew').textContent = syncCount;
+    document.getElementById('nameImportDuplicate').textContent = _nameImportState.duplicateCount;
+    document.getElementById('nameImportPreviewBody').innerHTML = items.map((item, idx) =>
+      `<tr><td>${idx + 1}</td><td class="${item.conflict ? 'duplicate' : ''}">${esc(item.name)}</td>` +
+      `<td>${item.conflict ? '<span class="muted">匹配冲突</span>' : (item.matchId ? '<span style="color:var(--primary);">更新</span>' : '<span style="color:var(--success);">新增</span>')}</td></tr>`
+    ).join('');
+    document.getElementById('confirmNameImportBtn').disabled = syncCount === 0;
+    document.getElementById('nameImportModal').classList.add('show');
+  } catch(e) {
+    showToast('导入失败：' + e.message, 'error');
+  } finally {
+    input.value = '';
+  }
+}
+
+function closeNameImportModal(){
+  document.getElementById('nameImportModal').classList.remove('show');
+  _nameImportState = null;
+}
+
+async function confirmNameImport(){
+  if (!_nameImportState) return;
+  const defaultCompany = document.getElementById('nameImportCompany').value.trim();
+  const valid = _nameImportState.items.filter(x => !x.conflict);
+  if (valid.some(x => !x.record.companyName) && !defaultCompany) {
+    showToast('Excel中有记录缺少公司，请填写默认公司简称', 'error'); return;
+  }
+  const unusedEmails = getUnusedEmails().map(x => x.email);
+  const items = valid.map(entry => {
+    const record = Object.assign({
+      status: DEFAULT_STATUS,
+      companyName: defaultCompany
+    }, entry.record, entry.matchId ? { id: entry.matchId } : {});
+    if (!entry.matchId && !record.email && unusedEmails.length) record.email = unusedEmails.shift();
+    return record;
+  });
+  if (!items.length) { showToast('没有可同步的记录', 'error'); return; }
+  const skipped = _nameImportState.totalCount - items.length;
+  try {
+    const conflicts = _nameImportState.items.filter(x => x.conflict);
+    await Promise.all(conflicts.map(x => apiPost('/api/exceptions', {
+      companyName: x.record.companyName || defaultCompany,
+      miniProgramName: x.name,
+      reason: 'Excel 导入时 AppID 与小程序名称匹配到不同记录',
+      payload: x.record
+    })));
+    const result = await apiPost('/api/programs/bulk', { items: items });
+    const savedItems = result && Array.isArray(result.items) ? result.items : [];
+    const savedById = new Map(savedItems.map(r => [String(r.id), r]));
+    _recordsCache = _recordsCache.map(r => savedById.get(String(r.id)) || r);
+    const existingIds = new Set(_recordsCache.map(r => String(r.id)));
+    savedItems.forEach(r => { if (!existingIds.has(String(r.id))) _recordsCache.push(r); });
+  } catch(e) {
+    showToast('导入提交失败：' + e.message, 'error');
+    return;
+  }
+  closeNameImportModal();
+  page = 1;
+  render();
+  showToast(`已同步${items.length}条${skipped > 0 ? '，跳过冲突/重复' + skipped + '条' : ''}`, 'success');
 }
 
 function exportJSON(){
@@ -955,11 +1487,17 @@ function exportJSON(){
 }
 
 // ============ 邮箱列表 ============
-function getEmails(){ return _emailsCache || []; }
-function setEmails(arr){
-  _emailsCache = arr;
-  localStorage.setItem(EMAIL_STORAGE_KEY, JSON.stringify(arr));   // 本地离线缓存
-  if (_useApi) apiPost('/api/emails', arr).catch(e => console.warn('保存邮箱到后端失败:', e.message));  // 跨设备同步
+function getEmails(){ return Array.isArray(_emailsCache) ? JSON.parse(JSON.stringify(_emailsCache)) : []; }
+async function setEmails(arr){
+  if (!_useApi) throw new Error('服务器未连接，暂不能提交邮箱');
+  if (_emailsSaving) throw new Error('邮箱正在同步，请稍后再试');
+  _emailsSaving = true;
+  try {
+    await apiPost('/api/emails', arr);
+    _emailsCache = arr;
+  } finally {
+    _emailsSaving = false;
+  }
 }
 
 // 未被小程序使用的邮箱（用于新增小程序时搜索选择）
@@ -995,9 +1533,7 @@ function renderEmailList(){
       <td class="mono">${esc(e.email)}</td>
       <td>${used ? esc(names.join('、')) : '<span class="muted">—</span>'}</td>
       <td>${used ? '<span class="tag tag-status-审核通过">已使用</span>' : '<span class="tag tag-status-待注册">未使用</span>'}</td>
-      <td><div class="row-ops">
-        <button class="icon-btn-sm del" onclick="deleteEmail(${i})">删除</button>
-      </div></td>
+      <td>${isSuper() ? `<div class="row-ops"><button class="icon-btn-sm del" onclick="deleteEmail(${i})">删除</button></div>` : '<span class="muted">只读</span>'}</td>
     </tr>`;
   }).join('');
 }
@@ -1006,7 +1542,7 @@ function renderEmailList(){
 function importEmails(event){
   const file = event.target.files[0]; if (!file) return;
   const reader = new FileReader();
-  reader.onload = e => {
+  reader.onload = async e => {
     const text = e.target.result;
     let parsed = [];
     const ext = file.name.split('.').pop().toLowerCase();
@@ -1028,11 +1564,17 @@ function importEmails(event){
     // 去重 + 邮箱格式校验
     parsed = [...new Set(parsed.filter(e => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e)))];
     if (parsed.length === 0) { showToast('未找到有效邮箱', 'error'); return; }
-    const list = getEmails();
+    const list = getEmails().slice();
     const exist = new Set(list.map(e => e.email));
     let added = 0;
     parsed.forEach(em => { if (!exist.has(em)) { list.push({ email: em, _id: 'em_' + Date.now() + '_' + Math.random().toString(36).slice(2,8) }); exist.add(em); added++; } });
-    setEmails(list); renderEmailList();
+    try {
+      await setEmails(list);
+    } catch(e) {
+      showToast('邮箱导入失败：' + e.message, 'error');
+      return;
+    }
+    renderEmailList();
     showToast(`导入 ${added} 个邮箱` + (parsed.length - added > 0 ? `，跳过 ${parsed.length - added} 个重复` : ''), 'success');
   };
   reader.readAsText(file); event.target.value = '';
@@ -1046,21 +1588,40 @@ function openAddEmail(){
 }
 function closeEmailModal(){ document.getElementById('emailModal').classList.remove('show'); }
 
-function saveEmail(){
+async function saveEmail(){
   const em = document.getElementById('emailInput').value.trim();
   if (!em) { showToast('请输入邮箱地址', 'error'); return; }
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(em)) { showToast('邮箱格式不正确', 'error'); return; }
-  const list = getEmails();
+  const list = getEmails().slice();
   if (list.some(e => e.email === em)) { showToast('该邮箱已存在', 'error'); return; }
   list.push({ email: em, _id: 'em_' + Date.now() + '_' + Math.random().toString(36).slice(2,8) });
-  setEmails(list); renderEmailList(); closeEmailModal();
-  showToast('已新增邮箱', 'success');
+  try {
+    await setEmails(list);
+  } catch(e) {
+    showToast('新增邮箱失败：' + e.message, 'error');
+    return;
+  }
+  renderEmailList(); closeEmailModal();
+  showToast('已新增邮箱并同步服务器', 'success');
 }
 
-function deleteEmail(idx){
+async function deleteEmail(idx){
+  const target = getEmails()[idx];
+  const usedBy = target ? getAllRecords().filter(r => r.email === target.email) : [];
+  if (usedBy.length) {
+    showToast('该邮箱仍被 ' + usedBy.length + ' 个小程序使用，不能删除', 'error');
+    return;
+  }
   if (!confirm('确认删除该邮箱？')) return;
-  const list = getEmails(); list.splice(idx, 1); setEmails(list); renderEmailList();
-  showToast('已删除', 'success');
+  try {
+    await apiDelete('/api/emails/' + encodeURIComponent(target.email));
+    _emailsCache = getEmails().filter(e => e.email !== target.email);
+  } catch(e) {
+    showToast('删除邮箱失败：' + e.message, 'error');
+    return;
+  }
+  renderEmailList();
+  showToast('已删除并同步服务器', 'success');
 }
 
 function exportEmails(){
@@ -1085,7 +1646,7 @@ function renderDashboard(){
   const weekExpected = calcExpectedThisWeek(all, now);
 
   let statsHtml = `<div class="stat-card"><div class="num">${total}</div><div class="label">总记录</div></div>`;
-  statsHtml += `<div class="stat-card status-card" style="border-left:3px solid var(--warning);"><div class="num" style="color:var(--warning);">${weekExpected.length}</div><div class="label">本周预计通过</div></div>`;
+  statsHtml += `<div class="stat-card status-card" style="border-left:3px solid var(--warning);"><div class="num" style="color:var(--warning);">${weekExpected.length}</div><div class="label">本周预计备案完成</div></div>`;
   STATUS_LIST.forEach(s => { statsHtml += `<div class="stat-card status-card"><div class="num">${byStatus[s]}</div><div class="label">${s}</div></div>`; });
   document.getElementById('dashboardStats').innerHTML = statsHtml;
 
@@ -1101,7 +1662,7 @@ function renderDashboard(){
     </div>`).join('') || '<div class="muted" style="font-size:12px;">暂无数据</div>';
 
   // 状态分布
-  const statusColors = { '待审核':'#e6a23c', '审核中':'#409eff', '审核通过':'#67c23a', '备案完成':'#13c2c2', '待注册':'#f56c6c', '待验收':'#722ed1', '已验收':'#909399' };
+  const statusColors = { '待注册':'#f56c6c', '待审核':'#e6a23c', '备案中':'#409eff', '备案完成':'#13c2c2', '已结算':'#909399' };
   let statusHtml = STATUS_LIST.map(s => {
     const count = byStatus[s];
     const pct = total ? (count/total*100).toFixed(1) : 0;
@@ -1112,7 +1673,7 @@ function renderDashboard(){
   }).join('');
   document.getElementById('statusDist').innerHTML = statusHtml || '<div class="muted" style="font-size:12px;">暂无数据</div>';
 
-  // 本周预计审核通过明细
+  // 本周预计备案完成明细
   const sortedWeek = weekExpected.sort((a,b) => new Date(a.submitDate) - new Date(b.submitDate));
   document.getElementById('expectedWeek').innerHTML = sortedWeek.length ? sortedWeek.map(r => {
     const submit = new Date(r.submitDate.split(' ')[0]);
@@ -1122,31 +1683,143 @@ function renderDashboard(){
       <div><div style="font-weight:500;">${esc(r.miniProgramName||'(未命名)')}</div><div style="color:var(--text-3);font-size:11px;">${esc(r.companyName||'')} · 提交 ${esc(r.submitDate||'')}</div></div>
       <div style="text-align:right;"><div style="color:var(--warning);font-weight:600;">${days}天</div><div style="color:var(--success);font-size:11px;">预计 ${expected.toLocaleDateString('zh-CN')}</div></div>
     </div>`;
-  }).join('') : '<div class="muted" style="font-size:12px;">本周无预计审核通过项</div>';
+  }).join('') : '<div class="muted" style="font-size:12px;">本周无预计备案完成项</div>';
 
   // 待处理事项
   const todos = [];
-  const pendingReview = all.filter(r => r.status === '待审核').length;
-  const overdue = all.filter(r => { if (r.status !== '审核中' || !r.submitDate) return false; const s = new Date(r.submitDate.split(' ')[0]); return !isNaN(s) && (now - s) / 86400000 >= 8; }).length;
   const pendingRegister = all.filter(r => r.status === '待注册').length;
-  const pendingAcceptance = all.filter(r => r.status === '待验收').length;
-  if (pendingReview > 0) todos.push({ icon:'📝', text:`待审核 ${pendingReview} 个`, color:'var(--warning)' });
-  if (overdue > 0) todos.push({ icon:'⏰', text:`审核中超 8 天 ${overdue} 个`, color:'var(--danger)' });
-  if (pendingRegister > 0) todos.push({ icon:'🔐', text:`待注册 ${pendingRegister} 个`, color:'var(--primary)' });
-  if (pendingAcceptance > 0) todos.push({ icon:'🔍', text:`待验收 ${pendingAcceptance} 个`, color:'var(--primary)' });
-  document.getElementById('todoItems').innerHTML = todos.length ? todos.map(t => `<div style="display:flex;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid #f0f2f5;font-size:12px;"><span style="font-size:16px;">${t.icon}</span><span style="color:${t.color};">${esc(t.text)}</span></div>`).join('') : '<div class="muted" style="font-size:12px;">✓ 暂无待处理事项</div>';
+  const pendingReview = all.filter(r => r.status === '待审核').length;
+  const overdue = all.filter(r => { if (r.status !== '备案中' || !r.submitDate) return false; const s = new Date(r.submitDate.split(' ')[0]); return !isNaN(s) && (now - s) / 86400000 >= 8; }).length;
+  if (pendingRegister > 0) todos.push({ icon:'🔐', text:`待注册 ${pendingRegister} 个`, color:'var(--primary)', status:'待注册' });
+  if (pendingReview > 0) todos.push({ icon:'📝', text:`待审核 ${pendingReview} 个`, color:'var(--warning)', status:'待审核' });
+  if (overdue > 0) todos.push({ icon:'⏰', text:`备案中超 8 天 ${overdue} 个`, color:'var(--danger)', status:'备案中' });
+  document.getElementById('todoItems').innerHTML = todos.length ? todos.map(t => `<div class="clickable" onclick="openStatusFilter('${esc(t.status)}')" style="display:flex;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid #f0f2f5;font-size:12px;"><span style="font-size:16px;">${t.icon}</span><span style="color:${t.color};">${esc(t.text)}</span></div>`).join('') : '<div class="muted" style="font-size:12px;">✓ 暂无待处理事项</div>';
 
   // 最近提交
   const recent = all.filter(r => r.submitDate).sort((a,b) => new Date(b.submitDate) - new Date(a.submitDate)).slice(0, 10);
   document.getElementById('recentList').innerHTML = recent.length ? recent.map(r => `<tr><td>${esc(r.companyName||'')}</td><td>${esc(r.miniProgramName||'')}</td><td>${r.status ? `<span class="tag tag-status-${esc(r.status)}">${esc(r.status)}</span>` : '<span class="muted">—</span>'}</td><td class="mono">${esc(r.submitDate||'')}</td></tr>`).join('') : '<tr class="empty"><td colspan="4">暂无记录</td></tr>';
+  renderExceptionSummary();
+}
+
+function openStatusFilter(status){
+  switchPage('data');
+  document.getElementById('filterStatus').value = status;
+  page = 1;
+  renderBody();
+}
+
+function pendingInfoPrograms(){
+  return getAllRecords().filter(r => String(r.taskReason || '').includes('待补资料'));
+}
+
+function renderExceptionSummary(){
+  const openItems = (_exceptionsCache || []).filter(x => x.status !== 'resolved');
+  const open = openItems.length;
+  const last = _statusCache && _statusCache.lastRun;
+  const exceptionFailures = openItems.filter(x => /同步|检测|失败|error/i.test(String(x.reason || ''))).length;
+  const failed = exceptionFailures + (last && (last.status === 'failed' || last.status === 'partial' || Number(last.failure_count) > 0) ? Number(last.failure_count || 1) : 0);
+  const pending = pendingInfoPrograms().length;
+  document.getElementById('exceptionStats').innerHTML = [
+    ['开放异常', open, 'var(--danger)'],
+    ['同步 / 检测失败', failed, 'var(--warning)'],
+    ['待补资料', pending, 'var(--primary)']
+  ].map(x => `<div class="stat-card status-card clickable" onclick="switchPage('exceptions')" style="border-left:3px solid ${x[2]};"><div class="num" style="color:${x[2]};">${x[1]}</div><div class="label">${x[0]}（点击处理）</div></div>`).join('');
+}
+
+async function refreshWorkbench(showMessage){
+  try {
+    const values = await Promise.all([
+      apiGet('/api/status'), apiGet('/api/exceptions'), apiGet('/api/audit?limit=30')
+    ]);
+    _statusCache = values[0] || null;
+    _exceptionsCache = Array.isArray(values[1]) ? values[1] : [];
+    _auditCache = Array.isArray(values[2]) ? values[2] : [];
+    renderWorkbench();
+    renderExceptionSummary();
+    if (showMessage === true) showToast('异常工作台已刷新', 'success');
+    return true;
+  } catch(e) {
+    if (showMessage !== false) showToast('异常工作台加载失败：' + e.message, 'error');
+    return false;
+  }
+}
+
+function renderWorkbench(){
+  const open = (_exceptionsCache || []).filter(x => x.status !== 'resolved');
+  const pending = pendingInfoPrograms();
+  const last = _statusCache && _statusCache.lastRun;
+  const failed = last && (last.status === 'failed' || last.status === 'partial' || Number(last.failure_count) > 0);
+  const failureExceptions = open.filter(x => /同步|检测|失败|error/i.test(String(x.reason || '')));
+  const failedCount = failureExceptions.length + (failed ? Number(last.failure_count || 1) : 0);
+  const stats = document.getElementById('workbenchStats');
+  if (!stats) return;
+  stats.innerHTML = `<div class="stat-card status-card"><div class="num" style="color:var(--danger);">${open.length}</div><div class="label">开放异常</div></div>` +
+    `<div class="stat-card status-card"><div class="num" style="color:var(--warning);">${failedCount}</div><div class="label">同步 / 检测失败</div></div>` +
+    `<div class="stat-card status-card"><div class="num">${pending.length}</div><div class="label">待补资料</div></div>`;
+  document.getElementById('openExceptionList').innerHTML = open.length ? open.map(x => `
+    <div class="exception-item"><div class="detail"><div class="title">${esc(x.reason || '未说明异常')}</div>
+    <div class="meta">${esc(x.company_name || '')} · ${esc(x.mini_program_name || '')} · ${esc(x.created_at || '')}</div></div>
+    <button class="btn success sm" onclick="resolveException(${Number(x.id)})">标记已解决</button></div>`).join('') : '<div class="muted">暂无开放异常</div>';
+  const failureHtml = failureExceptions.map(x => `<div class="exception-item"><div class="detail"><div class="title">${esc(x.reason || '同步异常')}</div><div class="meta">${esc(x.updated_at || x.created_at || '')}</div></div></div>`).join('');
+  const runHtml = last ? `<div class="exception-item"><div class="detail"><div class="title">最近检测：${esc(last.status || '未知')}</div><div class="meta">开始：${esc(last.started_at || '')}；成功 ${Number(last.success_count || 0)}，失败 ${Number(last.failure_count || 0)}${last.error ? '；' + esc(last.error) : ''}</div></div></div>` : '';
+  document.getElementById('syncFailureList').innerHTML = failureHtml + runHtml || '<div class="muted">暂无同步或检测记录</div>';
+  document.getElementById('pendingInfoList').innerHTML = pending.length ? pending.map(r => `
+    <div class="exception-item clickable" onclick="openProgramFromWorkbench('${esc(r.id)}')"><div class="detail"><div class="title">${esc(r.miniProgramName || '(未命名)')}</div>
+    <div class="meta">${esc(r.companyName || '')} · ${esc(r.taskReason || '待补资料')}</div></div><button class="btn ghost sm">编辑资料</button></div>`).join('') : '<div class="muted">暂无待补资料记录</div>';
+  const undoable = (_auditCache || []).filter(x =>
+    x.entity_type === 'program' && ['create','update','delete'].includes(x.action) &&
+    x.actor !== 'undo' && !x.undone
+  ).slice(0, 10);
+  document.getElementById('recentAuditList').innerHTML = undoable.length ? undoable.map(x => `
+    <div class="exception-item"><div class="detail"><div class="title">${esc(x.action)} · ${esc(x.entity_id)}</div>
+    <div class="meta">${esc(x.actor || '')} · ${esc(x.created_at || '')}</div></div>
+    <button class="btn ghost sm" onclick="undoAudit(${Number(x.id)})">撤销</button></div>`).join('') : '<div class="muted">暂无可撤销操作</div>';
+}
+
+async function resolveException(id){
+  try {
+    await apiPatch('/api/exceptions/' + encodeURIComponent(id), { status: 'resolved' });
+    const item = _exceptionsCache.find(x => Number(x.id) === Number(id));
+    if (item) item.status = 'resolved';
+    renderWorkbench(); renderExceptionSummary();
+    showToast('异常已标记为解决', 'success');
+  } catch(e) { showToast('异常处理失败：' + e.message, 'error'); }
+}
+
+async function undoAudit(id){
+  if (!confirm('确认撤销这次操作？')) return;
+  try {
+    await apiPost('/api/audit/' + encodeURIComponent(id) + '/undo', {});
+    await loadAllPrograms();
+    await refreshWorkbench(false);
+    render(); renderDashboard();
+    showToast('操作已撤销', 'success');
+  } catch(e) { showToast('撤销失败：' + e.message, 'error'); }
+}
+
+function openProgramFromWorkbench(id){
+  switchPage('data');
+  openEdit(id);
 }
 
 // ============ 监控配置 ============
-function getMonitorConfig(){ return _monitorCache || JSON.parse(JSON.stringify(DEFAULT_MONITOR_CONFIG)); }
-function setMonitorConfig(cfg){
-  _monitorCache = cfg;
-  localStorage.setItem(MONITOR_CONFIG_KEY, JSON.stringify(cfg));   // 本地离线缓存
-  if (_useApi) apiPost('/api/monitor', cfg).catch(e => console.warn('保存监控配置到后端失败:', e.message));  // 跨设备同步
+function getMonitorConfig(){
+  return JSON.parse(JSON.stringify(_monitorCache || DEFAULT_MONITOR_CONFIG));
+}
+async function setMonitorConfig(cfg){
+  if (!_useApi) throw new Error('服务器未连接，暂不能提交监控配置');
+  const snapshot = JSON.parse(JSON.stringify(cfg));
+  const previous = _monitorCache;
+  const version = ++_monitorSaveVersion;
+  _monitorCache = snapshot;
+  const save = _monitorSaveQueue.then(() => apiPost('/api/monitor', snapshot));
+  _monitorSaveQueue = save.catch(() => {});
+  try {
+    await save;
+  } catch(e) {
+    if (version === _monitorSaveVersion) _monitorCache = previous;
+    throw e;
+  }
 }
 
 function loadMonitorConfigToForm(){
@@ -1161,7 +1834,7 @@ function loadMonitorConfigToForm(){
   const times = normalizeTimes(cfg.times || []);
   if (JSON.stringify(times) !== JSON.stringify(cfg.times || [])) {
     cfg.times = times;
-    setMonitorConfig(cfg);
+    setMonitorConfig(cfg).catch(e => showToast('时间格式同步失败：' + e.message, 'error'));
   }
   renderTimeList(times);
   updateMonitorStats();
@@ -1186,23 +1859,23 @@ function renderCompanyMonitorList(companies){
   }).join('');
 }
 
-function toggleCompanyMonitor(idx, enabled){
+async function toggleCompanyMonitor(idx, enabled){
   const cfg = getMonitorConfig();
   if (!cfg.companies[idx]) return;
   cfg.companies[idx].enabled = enabled;
-  setMonitorConfig(cfg);
+  try { await setMonitorConfig(cfg); } catch(e) { showToast('监控状态保存失败：' + e.message, 'error'); loadMonitorConfigToForm(); return; }
   const el = document.getElementById('company-status-' + idx);
   if (el) { el.textContent = enabled ? '● 监控中' : '○ 已暂停'; el.className = 'status-text ' + (enabled ? 'running' : ''); }
   updateMonitorStats();
   showToast(enabled ? '已开启监控' : '已暂停监控', 'success');
 }
 
-function updateCompanyName(idx, name){ const cfg = getMonitorConfig(); if (cfg.companies[idx]) { cfg.companies[idx].name = name.trim(); setMonitorConfig(cfg); } }
-function updateCompanyFullName(idx, fullName){ const cfg = getMonitorConfig(); if (cfg.companies[idx]) { cfg.companies[idx].fullName = fullName.trim(); setMonitorConfig(cfg); } }
-function setAllMonitor(enabled){ const cfg = getMonitorConfig(); cfg.companies.forEach(c => c.enabled = enabled); setMonitorConfig(cfg); renderCompanyMonitorList(cfg.companies); updateMonitorStats(); showToast(enabled ? '已全部开启' : '已全部暂停', 'success'); }
+async function updateCompanyName(idx, name){ const cfg = getMonitorConfig(); if (cfg.companies[idx]) { cfg.companies[idx].name = name.trim(); try { await setMonitorConfig(cfg); } catch(e) { showToast('公司简称保存失败：' + e.message, 'error'); } } }
+async function updateCompanyFullName(idx, fullName){ const cfg = getMonitorConfig(); if (cfg.companies[idx]) { cfg.companies[idx].fullName = fullName.trim(); try { await setMonitorConfig(cfg); } catch(e) { showToast('公司全称保存失败：' + e.message, 'error'); } } }
+async function setAllMonitor(enabled){ const cfg = getMonitorConfig(); cfg.companies.forEach(c => c.enabled = enabled); try { await setMonitorConfig(cfg); } catch(e) { showToast('监控状态保存失败：' + e.message, 'error'); return; } renderCompanyMonitorList(cfg.companies); updateMonitorStats(); showToast(enabled ? '已全部开启' : '已全部暂停', 'success'); }
 function updateMonitorStats(){ const cfg = getMonitorConfig(); const total = cfg.companies.length; const running = cfg.companies.filter(c => c.enabled).length; document.getElementById('totalCompanies').textContent = total; document.getElementById('runningCompanies').textContent = running; document.getElementById('pausedCompanies').textContent = total - running; }
-function addCompany(){ const cfg = getMonitorConfig(); cfg.companies.push({ name: '', fullName: '', enabled: true, lastCount: null, lastCheck: '', hasNew: false }); setMonitorConfig(cfg); renderCompanyMonitorList(cfg.companies); updateMonitorStats(); }
-function removeCompany(idx){ if (!confirm('确认删除该公司？')) return; const cfg = getMonitorConfig(); cfg.companies.splice(idx, 1); setMonitorConfig(cfg); renderCompanyMonitorList(cfg.companies); updateMonitorStats(); }
+async function addCompany(){ const cfg = getMonitorConfig(); cfg.companies.push({ name: '', fullName: '', enabled: true, lastCount: null, lastCheck: '', hasNew: false }); try { await setMonitorConfig(cfg); } catch(e) { showToast('新增公司失败：' + e.message, 'error'); return; } renderCompanyMonitorList(cfg.companies); updateMonitorStats(); }
+async function removeCompany(idx){ if (!confirm('确认删除该公司？')) return; const cfg = getMonitorConfig(); cfg.companies.splice(idx, 1); try { await setMonitorConfig(cfg); } catch(e) { showToast('删除公司失败：' + e.message, 'error'); return; } renderCompanyMonitorList(cfg.companies); updateMonitorStats(); }
 
 // 统一成 HH:MM，避免 <input type="time"> 在部分浏览器返回 HH:MM:SS 导致与 cron 对不上
 function normalizeTimeHM(t){
@@ -1223,7 +1896,7 @@ function normalizeTimes(times){
 function renderTimeList(times){
   document.getElementById('timeList').innerHTML = times.map((t, i) => `<div class="time-item"><span>⏰ ${esc(t)}</span><span class="remove" onclick="removeTime(${i})">×</span></div>`).join('');
 }
-function addTime(){
+async function addTime(){
   const t = normalizeTimeHM(document.getElementById('newTime').value);
   if (!t) { showToast('请选择时间', 'error'); return; }
   const cfg = getMonitorConfig();
@@ -1231,11 +1904,11 @@ function addTime(){
   if (cfg.times.includes(t)) { showToast('该时间已存在', 'error'); return; }
   cfg.times.push(t);
   cfg.times.sort();
-  setMonitorConfig(cfg);
+  try { await setMonitorConfig(cfg); } catch(e) { showToast('监控时间保存失败：' + e.message, 'error'); return; }
   renderTimeList(cfg.times);
   document.getElementById('newTime').value = '12:00';
 }
-function removeTime(idx){ const cfg = getMonitorConfig(); cfg.times.splice(idx, 1); setMonitorConfig(cfg); renderTimeList(cfg.times); }
+async function removeTime(idx){ const cfg = getMonitorConfig(); cfg.times.splice(idx, 1); try { await setMonitorConfig(cfg); } catch(e) { showToast('删除监控时间失败：' + e.message, 'error'); return; } renderTimeList(cfg.times); }
 
 // 从表单收集监控配置（不校验，保留检测状态字段）
 function collectMonitorConfigFromForm(){
@@ -1264,241 +1937,78 @@ function collectMonitorConfigFromForm(){
   return cfg;
 }
 // 自动保存（输入框修改时触发，不校验不提示）
-function autoSaveMonitor(){
+async function autoSaveMonitor(){
   const cfg = collectMonitorConfigFromForm();
-  setMonitorConfig(cfg);
+  try { await setMonitorConfig(cfg); } catch(e) { showToast('监控配置自动保存失败：' + e.message, 'error'); }
 }
-function saveMonitorConfig(){
+async function saveMonitorConfig(){
   const cfg = collectMonitorConfigFromForm();
-  if (!cfg.apihz.id || !cfg.apihz.key) { showToast('请填写 apihz 开发者 ID 和 KEY', 'error'); return; }
-  if (!cfg.dingtalk.webhook) { showToast('请填写钉钉机器人 Webhook 地址', 'error'); return; }
-  if (cfg.companies.length === 0) { showToast('请添加至少一个监控公司', 'error'); return; }
-  setMonitorConfig(cfg); showToast('配置已保存', 'success');
+  if (!cfg.apihz.id || !cfg.apihz.key) { showToast('请填写 apihz 开发者 ID 和 KEY', 'error'); return false; }
+  if (!cfg.dingtalk.webhook) { showToast('请填写钉钉机器人 Webhook 地址', 'error'); return false; }
+  if (cfg.companies.length === 0) { showToast('请添加至少一个监控公司', 'error'); return false; }
+  try { await setMonitorConfig(cfg); } catch(e) { showToast('配置保存失败：' + e.message, 'error'); return false; }
+  showToast('配置已保存到服务器', 'success');
+  return true;
 }
 
-function loadDefaultConfig(){ if (!confirm('恢复默认配置？')) return; _monitorCache = JSON.parse(JSON.stringify(DEFAULT_MONITOR_CONFIG)); localStorage.setItem(MONITOR_CONFIG_KEY, JSON.stringify(_monitorCache)); if (_useApi) apiPost('/api/monitor', _monitorCache).catch(()=>{}); loadMonitorConfigToForm(); showToast('已恢复默认', 'success'); }
+async function loadDefaultConfig(){ if (!confirm('恢复默认配置？')) return; const cfg = JSON.parse(JSON.stringify(DEFAULT_MONITOR_CONFIG)); try { await setMonitorConfig(cfg); } catch(e) { showToast('恢复默认配置失败：' + e.message, 'error'); return; } loadMonitorConfigToForm(); showToast('已恢复默认并同步服务器', 'success'); }
 
-// ============ 钉钉群机器人通知 ============
-// 计算加签签名：timestamp + "\n" + secret 的 HMAC-SHA256，再 Base64 + urlencode
-async function dingSign(secret, timestamp){
-  const stringToSign = timestamp + '\n' + secret;
-  const enc = new TextEncoder();
-  const key = await crypto.subtle.importKey('raw', enc.encode(secret), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']);
-  const sig = await crypto.subtle.sign('HMAC', key, enc.encode(stringToSign));
-  const b64 = btoa(String.fromCharCode(...new Uint8Array(sig)));
-  return encodeURIComponent(b64);
+async function loadVendorSettings(){
+  const value = await apiGet('/api/vendor/settings');
+  const input = document.getElementById('vendorSyncDays');
+  const status = document.getElementById('vendorSyncStatus');
+  if (input) input.value = value.syncDays || 1;
+  if (status) status.textContent = value.lastSyncAt ? `上次同步：${value.lastSyncAt}` : '尚未同步';
 }
-
-// 发送钉钉机器人消息（text 类型）。返回 {success, msg, raw}
-// 通过服务器Nginx反向代理(/ding-proxy/)转发到钉钉API，解决浏览器CORS限制
-async function sendDingTalk(ding, content){
-  if (!ding || !ding.webhook) return { success: false, msg: '未配置 Webhook' };
-  const keyword = ding.keyword || '备案监控';
-  // 确保内容包含关键词（钉钉自定义关键词安全设置要求）
-  const text = content.includes(keyword) ? content : `${keyword} ${content}`;
-  // 从webhook中提取access_token，拼接到同源代理路径
-  let accessToken = '';
+async function saveVendorSettings(){
+  const input = document.getElementById('vendorSyncDays');
+  const days = Number(input && input.value);
+  if (!Number.isInteger(days) || days < 1 || days > 365) {
+    showToast('同步天数必须是 1 到 365 的整数', 'error'); return;
+  }
   try {
-    const m = ding.webhook.match(/access_token=([^&]+)/);
-    if (m) accessToken = m[1];
-  } catch(e) {}
-  if (!accessToken) return { success: false, msg: 'Webhook中未找到access_token' };
-  // 同源代理路径，避免CORS
-  let url = `/ding-proxy/robot/send?access_token=${accessToken}`;
+    await apiPatch('/api/vendor/settings', { syncDays: days });
+    await loadVendorSettings();
+    showToast(`已设置每 ${days} 天自动同步`, 'success');
+  } catch(e) { showToast('保存同步天数失败：' + e.message, 'error'); }
+}
+let _vendorRunning = false;
+async function runVendorAction(mode, btn){
+  if (_vendorRunning) { showToast('乙方平台任务正在运行', 'error'); return; }
+  _vendorRunning = true;
+  const original = btn ? btn.textContent : '';
+  if (btn) { btn.disabled = true; btn.textContent = mode === 'match' ? '匹配中...' : '同步中...'; }
   try {
-    if (ding.secret) {
-      const timestamp = Date.now();
-      const sign = await dingSign(ding.secret, timestamp);
-      url += `&timestamp=${timestamp}&sign=${sign}`;
+    const result = await apiPost(mode === 'match' ? '/api/vendor/match' : '/api/vendor/sync', {});
+    await Promise.all([loadAllPrograms(), refreshWorkbench(false), loadVendorSettings()]);
+    render(); renderDashboard();
+    if (mode === 'match') {
+      showToast(`匹配完成：更新 ${Number(result.updated || 0)} 个小程序、补齐 ${Number(result.fieldsUpdated || 0)} 个字段`, 'success');
+    } else {
+      showToast(`同步完成：新增 ${Number(result.created || 0)} 个小程序`, 'success');
     }
-    const res = await fetch(url, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ msgtype: 'text', text: { content: text } })
-    });
-    const data = await res.json();
-    if (data.errcode === 0) return { success: true, msg: '发送成功', raw: data };
-    return { success: false, msg: data.errmsg || ('errcode:' + data.errcode), raw: data };
-  } catch(e) {
-    return { success: false, msg: '网络错误: ' + e.message + '（本地预览不支持钉钉代理，请在线上环境测试）' };
+  } catch(e) { showToast((mode === 'match' ? '立即匹配失败：' : '立即同步失败：') + e.message, 'error'); }
+  finally {
+    _vendorRunning = false;
+    if (btn) { btn.disabled = false; btn.textContent = original; }
   }
 }
 
-// 测试钉钉通知
-async function testDingTalk(){
-  saveMonitorConfig();
-  const cfg = getMonitorConfig();
-  if (!cfg.dingtalk.webhook) { showToast('请先填写 Webhook 地址', 'error'); return; }
-  const btn = event ? event.target : null;
-  if (btn) { btn.disabled = true; btn.textContent = '发送中...'; }
-  const r = await sendDingTalk(cfg.dingtalk, `【${cfg.dingtalk.keyword || '备案监控'}】测试通知：钉钉机器人配置正常 ✓\n时间：${new Date().toLocaleString('zh-CN', { hour12: false })}`);
-  if (btn) { btn.disabled = false; btn.textContent = '📨 测试钉钉通知'; }
-  if (r.success) {
-    showToast('测试消息已发送到钉钉群', 'success');
-  } else {
-    showToast('发送失败：' + r.msg, 'error');
-  }
-}
-
-// ============ apihz 备案数量检测 ============
 let _checking = false;
-async function checkOneCompany(company, apihz){
-  const main = company.fullName || company.name;
-  if (!main) return { success: false, msg: '未填写主体全称' };
-  const url = `https://cn.apihz.cn/api/wangzhan/syicpxcx.php?id=${encodeURIComponent(apihz.id)}&key=${encodeURIComponent(apihz.key)}&main=${encodeURIComponent(main)}&hctype=1&page=1`;
-  try {
-    const res = await fetch(url, { method: 'GET' });
-    const data = await res.json();
-    if (data.code === 200) {
-      const list = Array.isArray(data.datas) ? data.datas : [];
-      const total = data.total != null ? data.total : list.length;
-      return { success: true, total: total, list: list };
-    }
-    return { success: false, msg: data.msg || '查询失败' };
-  } catch(e) {
-    return { success: false, msg: '网络错误: ' + e.message };
-  }
-}
-
-async function runCheckAll(){
+async function runCheckAll(btn){
   if (_checking) { showToast('正在检测中，请稍候', 'error'); return; }
-  saveMonitorConfig();
-  const cfg = getMonitorConfig();
-  if (!cfg.apihz.id || !cfg.apihz.key) { showToast('请先配置 apihz ID 和 KEY', 'error'); return; }
-  const targets = cfg.companies.map((c, i) => ({ c: c, i: i })).filter(x => x.c.enabled && (x.c.fullName || x.c.name));
-  if (targets.length === 0) { showToast('没有启用的公司或未填写主体全称', 'error'); return; }
+  if (!await saveMonitorConfig()) return;
   _checking = true;
-  const btn = event ? event.target : null;
   if (btn) { btn.disabled = true; btn.textContent = '检测中...'; }
-  let hasAnyNew = false;
-  const newDetailLines = []; // 记录新增小程序的明细，用于钉钉通知
-  const approvedPrograms = []; // 查询结果均为已备案，用于同步数据管理状态
-
-  // 读取历史检测记录（每家公司的上次 items），新公司默认 items 为空
-  let records = {};
-  if (_useApi) {
-    try { records = await apiGet('/api/records') || {}; } catch(e) { console.warn('读取records失败:', e.message); }
-  }
-  if (!records || typeof records !== 'object') records = {};
-
-  // 兼容历史格式：{name,icp} 与 [name,icp]；比对优先用小程序名，避免重复误报
-  function normalizeRecordItem(it){
-    if (Array.isArray(it) && it.length >= 2) return { name: String(it[0] || '').trim(), icp: String(it[1] || '').trim() };
-    if (it && typeof it === 'object') return { name: String(it.name || '').trim(), icp: String(it.icp || '').trim() };
-    return { name: '', icp: '' };
-  }
-  function recordItemIdentity(it){
-    const item = normalizeRecordItem(it);
-    if (item.name) return 'name:' + item.name;
-    if (item.icp) return 'icp:' + item.icp;
-    return '';
-  }
-  function extractRecordItem(d){
-    const name = d.servicename || d.name || d.xcxname || d.title || d.appname || d.app_name || d.nickName || d.nickname || d.miniProgramName || '';
-    // icpw=应用备案号（优先）；icp=主体备案号仅兜底
-    const icp = d.icpw || d.icp || d.beian || d.record || d.beianhao || d.icpNo || '';
-    return { name: String(name || '').trim(), icp: String(icp || '').trim() };
-  }
-
-  // 处理单次检测结果：返回 true=成功 false=失败
-  function handleResult(x, r){
-    const now = new Date().toLocaleString('zh-CN', { hour12: false });
-    if (r.success) {
-      const curItems = (r.list || []).map(extractRecordItem);
-      curItems.forEach(it => {
-        if (it.name) approvedPrograms.push({
-          companyName: x.c.name,
-          companyFullName: x.c.fullName || x.c.name,
-          miniProgramName: it.name,
-          approvedAt: now
-        });
-      });
-      const prevRec = records[x.c.name] || {};
-      const prevItems = Array.isArray(prevRec.items) ? prevRec.items : [];
-      const prevKeys = new Set(prevItems.map(recordItemIdentity).filter(Boolean));
-      const added = curItems.filter(it => {
-        const k = recordItemIdentity(it);
-        return k && !prevKeys.has(k);
-      });
-      if (added.length > 0) {
-        x.c.hasNew = true; hasAnyNew = true;
-        newDetailLines.push(`【${x.c.name}】新增 ${added.length} 个小程序：`);
-        added.forEach((it, idx) => {
-          const label = it.name || it.icp || '未命名';
-          newDetailLines.push(`  ${idx + 1}. ${label}${it.icp ? '（' + it.icp + '）' : ''}`);
-        });
-      } else {
-        x.c.hasNew = false;
-      }
-      records[x.c.name] = { items: curItems, lastCheck: now, lastCount: r.total };
-      x.c.lastCount = r.total;
-      x.c.lastCheck = now;
-      return true;
-    } else {
-      return false;  // 失败：不更新记录，等待重试
-    }
-  }
-
   try {
-    // 第一轮：逐个检测，失败的公司加入重试列表
-    const failedList = [];
-    for (const x of targets) {
-      const r = await checkOneCompany(x.c, cfg.apihz);
-      const ok = handleResult(x, r);
-      if (!ok) failedList.push(x);
-      else { cfg.companies[x.i] = x.c; setMonitorConfig(cfg); renderCompanyMonitorList(cfg.companies); }
-      if (x !== targets[targets.length - 1]) await new Promise(r => setTimeout(r, 2000));
-    }
-
-    // 第二轮：对失败的公司重新查一次
-    if (failedList.length > 0) {
-      showToast(`${failedList.length} 家失败，正在重试...`, 'success');
-      await new Promise(r => setTimeout(r, 2000));
-      const stillFailed = [];
-      for (const x of failedList) {
-        const r = await checkOneCompany(x.c, cfg.apihz);
-        const ok = handleResult(x, r);
-        if (!ok) {
-          stillFailed.push(x);
-          x.c.lastCheck = new Date().toLocaleString('zh-CN', { hour12: false }) + ' 失败';
-        }
-        cfg.companies[x.i] = x.c;
-        setMonitorConfig(cfg);
-        renderCompanyMonitorList(cfg.companies);
-        if (x !== failedList[failedList.length - 1]) await new Promise(r => setTimeout(r, 2000));
-      }
-      if (stillFailed.length > 0) {
-        showToast(`${stillFailed.length} 家公司检测失败：${stillFailed.map(x => x.c.name).join('、')}`, 'error');
-      }
-    }
-
-    // 回写 records.json（本次结果作为下次比对基准）
-    if (_useApi) {
-      try { await apiPost('/api/records', records); } catch(e) { console.warn('保存records失败:', e.message); }
-      if (approvedPrograms.length > 0) {
-        try {
-          await apiPost('/api/approved-programs', approvedPrograms);
-          const approvedKey = x => String(x.miniProgramName || '').trim();
-          const byKey = new Map((_approvedProgramsCache || []).map(x => [approvedKey(x), x]));
-          approvedPrograms.forEach(x => byKey.set(approvedKey(x), x));
-          _approvedProgramsCache = Array.from(byKey.values());
-          render();
-        } catch(e) {
-          console.warn('同步备案完成状态失败:', e.message);
-        }
-      }
-    }
-
-    if (hasAnyNew) {
-      showToast('检测完成，发现新增备案！正在推送钉钉通知...', 'success');
-      const keyword = cfg.dingtalk.keyword || '备案监控';
-      const content = `【${keyword}】发现新增小程序备案！\n检测时间：${new Date().toLocaleString('zh-CN', { hour12: false })}\n\n${newDetailLines.join('\n')}\n\n请及时登录系统查看详情。`;
-      const dr = await sendDingTalk(cfg.dingtalk, content);
-      if (dr.success) showToast('检测完成，钉钉通知已推送', 'success');
-      else showToast('检测完成，但钉钉通知失败：' + dr.msg, 'error');
-    } else {
-      showToast('检测完成，无新增', 'success');
-    }
+    const result = await apiPost('/api/monitor/run', {});
+    const refreshed = await Promise.all([loadAllPrograms(), refreshWorkbench(false)]);
+    render(); renderDashboard(); renderEmailList(); loadMonitorConfigToForm();
+    const failed = Number(result && result.failed || 0);
+    const refreshFailed = refreshed[1] === false;
+    showToast(refreshFailed ? '检测完成，但异常状态刷新失败' : (failed ? `检测完成，${failed} 家失败` : '检测完成'), failed || refreshFailed ? 'error' : 'success');
+  } catch(e) {
+    showToast('立即检测失败：' + e.message, 'error');
   } finally {
     _checking = false;
     if (btn) { btn.disabled = false; btn.textContent = '立即检测'; }
@@ -1507,7 +2017,15 @@ async function runCheckAll(){
 
 function showToast(msg, type){ const t = document.getElementById('toast'); t.textContent = msg; t.className = 'toast show ' + (type || ''); setTimeout(() => t.className = 'toast', 2000); }
 
-function init(){ renderStats(); renderFilters(); renderHead(); renderBody(); loadMonitorConfigToForm(); renderDashboard(); renderEmailList(); }
+function init(){
+  const bulk = document.getElementById('bulkStatus');
+  bulk.innerHTML = '<option value="">批量改状态</option>' + STATUS_LIST.map(s => `<option value="${esc(s)}">${esc(s)}</option>`).join('');
+  renderStats(); renderFilters(); renderHead(); renderBody();
+  renderEmailList(); renderCompanyManagement();
+  if (isSuper()) {
+    loadMonitorConfigToForm(); renderDashboard(); renderWorkbench();
+  }
+}
 
 document.getElementById('search').addEventListener('input', () => { page = 1; renderBody(); });
 document.getElementById('filterCompany').addEventListener('change', () => { page = 1; renderBody(); });

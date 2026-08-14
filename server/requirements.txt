@@ -1,0 +1,1 @@
+# Python 后端仅使用标准库；网页抓取依赖由根目录 package.json 管理。

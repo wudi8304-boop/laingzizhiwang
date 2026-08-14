@@ -1,0 +1,33 @@
+[Unit]
+Description=Laingzizhiwang configuration API
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=lzz
+Group=lzz
+WorkingDirectory=/www/laingzizhiwang
+EnvironmentFile=/etc/lzz-config.env
+ExecStart=/usr/bin/python3 /www/laingzizhiwang/server/config_server.py
+Restart=on-failure
+RestartSec=5s
+TimeoutStopSec=20s
+UMask=0027
+NoNewPrivileges=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+LockPersonality=true
+ReadWritePaths=/www/laingzizhiwang-data
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=lzz-config
+
+[Install]
+WantedBy=multi-user.target
