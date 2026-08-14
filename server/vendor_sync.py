@@ -132,6 +132,9 @@ def upsert_records(db, records, source_ref="", new_companies_only=True):
                 summary["conflicts"] += 1
                 add_exception(db, "乙方平台记录匹配到多个小程序", item)
                 continue
+            if len(matches) == 1 and service.get(matches[0]["id"])["status"] == "已结算":
+                summary["skipped"] += 1
+                continue
             item["externalId"] = external_id
             item.setdefault("status", "待注册")
             if not matches and not str(item.get("email") or "").strip():
@@ -169,9 +172,11 @@ def export_match_candidates(db, output_path):
     with db.connect() as conn:
         rows = conn.execute(
             """SELECT id,external_id,appid,mini_program_name FROM programs
-               WHERE trim(avatar_url)='' OR trim(description)='' OR trim(category)=''
+               WHERE status<>'已结算' AND (
+                  trim(avatar_url)='' OR trim(description)='' OR trim(category)=''
                   OR trim(appid)='' OR trim(original_id)='' OR trim(secret)=''
-                  OR trim(admin)='' OR trim(email)=''"""
+                  OR trim(admin)='' OR trim(email)=''
+               )"""
         ).fetchall()
     payload = [
         {
@@ -224,6 +229,9 @@ def match_records(db, records, source_ref=""):
             program_id = matches[0]["id"]
             existing = service.get(program_id)
             summary["matched"] += 1
+            if existing["status"] == "已结算":
+                summary["skipped"] += 1
+                continue
             updates = {}
             for field in (
                 "externalId", "avatarUrl", "description", "category",

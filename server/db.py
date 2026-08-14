@@ -34,12 +34,18 @@ CREATE TABLE IF NOT EXISTS programs (
  avatar_url TEXT NOT NULL DEFAULT '', description TEXT NOT NULL DEFAULT '', category TEXT NOT NULL DEFAULT '',
  appid TEXT NOT NULL DEFAULT '', original_id TEXT NOT NULL DEFAULT '', secret TEXT NOT NULL DEFAULT '',
  admin TEXT NOT NULL DEFAULT '', status TEXT NOT NULL DEFAULT '待注册', email TEXT NOT NULL DEFAULT '',
+ completed_at TEXT NOT NULL DEFAULT '', settled_at TEXT NOT NULL DEFAULT '',
  mini_program_password TEXT NOT NULL DEFAULT '', submit_date TEXT NOT NULL DEFAULT '',
  task_reason TEXT NOT NULL DEFAULT '', external_id TEXT NOT NULL DEFAULT '',
  source TEXT NOT NULL DEFAULT 'api', created_at TEXT NOT NULL, updated_at TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_programs_company ON programs(company_name);
 CREATE INDEX IF NOT EXISTS idx_programs_name ON programs(mini_program_name);
+CREATE TRIGGER IF NOT EXISTS prevent_settled_program_update
+BEFORE UPDATE ON programs WHEN OLD.status='已结算'
+BEGIN
+ SELECT RAISE(ABORT, '已结算的小程序不允许修改');
+END;
 CREATE TABLE IF NOT EXISTS emails (
  id INTEGER PRIMARY KEY AUTOINCREMENT, address TEXT NOT NULL UNIQUE, payload TEXT NOT NULL DEFAULT '{}',
  sort_order INTEGER NOT NULL DEFAULT 0, created_at TEXT NOT NULL, updated_at TEXT NOT NULL
@@ -123,13 +129,18 @@ class Database:
         with self.connect() as conn:
             conn.executescript(SCHEMA)
             existing = {row["name"] for row in conn.execute("PRAGMA table_info(programs)")}
-            for name in ("avatar_url", "description", "category", "task_reason", "external_id"):
+            for name in (
+                "avatar_url", "description", "category", "completed_at", "settled_at",
+                "task_reason", "external_id",
+            ):
                 if name not in existing:
                     conn.execute("ALTER TABLE programs ADD COLUMN %s TEXT NOT NULL DEFAULT ''" % name)
             conn.execute(
                 "CREATE UNIQUE INDEX IF NOT EXISTS idx_programs_external_id "
                 "ON programs(external_id) WHERE external_id<>''"
             )
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_programs_completed_at ON programs(completed_at)")
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_programs_settled_at ON programs(settled_at)")
             company_columns = {row["name"] for row in conn.execute("PRAGMA table_info(companies)")}
             if "assigned_admin_id" not in company_columns:
                 conn.execute("ALTER TABLE companies ADD COLUMN assigned_admin_id INTEGER")

@@ -104,7 +104,6 @@
   .tag-status-备案中 { background: #ecf5ff; color: #409eff; border: 1px solid #d9ecff; }
   .tag-status-备案完成 { background: #e6fffb; color: #13c2c2; border: 1px solid #87e8de; }
   .tag-status-已结算 { background: #f4f4f5; color: #909399; border: 1px solid #e9e9eb; }
-  .tag-status-审核通过 { background: #f0f9eb; color: #67c23a; border: 1px solid #e1f3d8; }
 
   .copy-cell:hover { background: #ecf5ff !important; color: var(--primary); cursor: pointer; }
   .copy-cell { transition: background .15s; }
@@ -231,7 +230,7 @@
       <button class="sidebar-toggle" onclick="toggleSidebar()" title="折叠/展开">‹</button>
     </div>
     <nav class="nav-list">
-      <div class="nav-item active super-only" data-page="dashboard" onclick="switchPage('dashboard')">
+      <div class="nav-item active" data-page="dashboard" onclick="switchPage('dashboard')">
         <span class="icon">🏠</span><span class="nav-text">首页看板</span>
       </div>
       <div class="nav-item" data-page="companies" onclick="switchPage('companies')">
@@ -266,6 +265,11 @@
         <div class="actions">
           <span style="font-size:12px;color:var(--text-3);" id="dashboardTime"></span>
         </div>
+      </div>
+      <div class="section" style="margin-bottom:14px;">
+        <h2>月度备案与结算 <span class="desc">本月备案完成，次月统一结算；点击卡片查看明细</span></h2>
+        <div class="stats" id="monthlyStats" style="margin-bottom:0;"></div>
+        <div class="help-tip" style="margin-top:10px;margin-bottom:0;">时间统计从本功能上线后开始，历史空时间不计入。</div>
       </div>
       <div class="stats" id="dashboardStats"></div>
       <div class="stats" id="exceptionStats"></div>
@@ -535,6 +539,21 @@
   </div>
 </div>
 
+<div class="modal-mask" id="monthlyDetailModal">
+  <div class="modal" style="width:860px;">
+    <div class="modal-head"><h3 id="monthlyDetailTitle">月度明细</h3><span class="close" onclick="closeMonthlyDetails()">&times;</span></div>
+    <div class="modal-body">
+      <div class="table-wrap" style="box-shadow:none;max-height:520px;overflow:auto;">
+        <table style="min-width:720px;font-size:12px;">
+          <thead><tr><th>公司</th><th>小程序名称</th><th>状态</th><th>备案完成时间</th><th>结算时间</th></tr></thead>
+          <tbody id="monthlyDetailBody"></tbody>
+        </table>
+      </div>
+    </div>
+    <div class="modal-foot"><button class="btn ghost sm" onclick="closeMonthlyDetails()">关闭</button></div>
+  </div>
+</div>
+
 <datalist id="unusedEmailList"></datalist>
 <div class="toast" id="toast"></div>
 
@@ -568,6 +587,7 @@ let _auditCache = [];
 let _sessionUser = null;
 let _companiesCache = [];
 let _adminsCache = [];
+let _monthlyMetricLists = {};
 let _emailsSaving = false;
 let _monitorSaveQueue = Promise.resolve();
 let _monitorSaveVersion = 0;
@@ -724,7 +744,7 @@ function applyRoleUI(){
   document.getElementById('currentUserLabel').textContent =
     (_sessionUser ? _sessionUser.username : '') + (superUser ? '（总管理员）' : '（分级管理员）');
   document.querySelectorAll('.page,.nav-item').forEach(el => el.classList.remove('active'));
-  const firstPage = superUser ? 'dashboard' : 'companies';
+  const firstPage = 'dashboard';
   document.getElementById('page-' + firstPage).classList.add('active');
   document.querySelector('.nav-item[data-page="' + firstPage + '"]').classList.add('active');
 }
@@ -1114,13 +1134,18 @@ let selectedRows = new Set();
 let anchorCell = null; // Shift范围选的起始单元格
 
 function toggleRow(id, checked){
+  const record = _recordsCache.find(r => String(r.id) === String(id));
+  if (record && record.status === '已结算') return;
   if (checked) selectedRows.add(String(id)); else selectedRows.delete(String(id));
   updateSelBar();
   const row = Array.from(document.querySelectorAll('#tbody tr[data-id]')).find(el => el.dataset.id === String(id));
   if (row) row.classList.toggle('row-selected', checked);
 }
 function toggleCurrentPageRows(checked){
-  currentPageList.forEach(r => checked ? selectedRows.add(String(r.id)) : selectedRows.delete(String(r.id)));
+  currentPageList.forEach(r => {
+    if (r.status === '已结算') return;
+    checked ? selectedRows.add(String(r.id)) : selectedRows.delete(String(r.id));
+  });
   renderBody();
 }
 
@@ -1139,13 +1164,14 @@ function renderBody(){
     document.getElementById('tbody').innerHTML = '<tr class="empty"><td colspan="'+allCols.length+'">没有匹配的记录</td></tr>';
   } else {
     document.getElementById('tbody').innerHTML = pageList.map((r, rowIdx) => {
+      const locked = r.status === '已结算';
       return `<tr data-id="${esc(r.id)}" class="${selectedRows.has(String(r.id)) ? 'row-selected' : ''}">` + allCols.map((c, colIdx) => {
         if (c.type === 'select') {
-          return `<td><input type="checkbox" ${selectedRows.has(String(r.id)) ? 'checked' : ''} onclick="event.stopPropagation()" onchange="toggleRow('${esc(r.id)}',this.checked)"></td>`;
+          return `<td><input type="checkbox" ${locked ? 'disabled title="已结算记录不可修改"' : ''} ${selectedRows.has(String(r.id)) ? 'checked' : ''} onclick="event.stopPropagation()" onchange="toggleRow('${esc(r.id)}',this.checked)"></td>`;
         }
         if (c.type === 'op') {
           return '<td><div class="row-ops">' +
-            `<button class="icon-btn-sm" onclick="openEdit('${esc(r.id)}')">编辑</button>` +
+            (locked ? '<span class="muted">已锁定</span>' : `<button class="icon-btn-sm" onclick="openEdit('${esc(r.id)}')">编辑</button>`) +
             `<button class="icon-btn-sm del" onclick="deleteRecord('${esc(r.id)}')">删除</button>` +
             '</div></td>';
         }
@@ -1153,7 +1179,7 @@ function renderBody(){
         const display = c.type === 'avatar' ? avatarHtml(v, false) :
           ((v == null || v === '') ? '<span class="muted">—</span>' :
           (c.type === 'status')
-            ? `<select class="inline-status" onclick="event.stopPropagation()" onchange="quickUpdateStatus('${esc(r.id)}',this.value,this)">${STATUS_LIST.map(s => `<option value="${esc(s)}" ${s===v?'selected':''}>${esc(s)}</option>`).join('')}</select>`
+            ? (locked ? `<span class="tag tag-status-已结算">已结算</span>` : `<select class="inline-status" onclick="event.stopPropagation()" onchange="quickUpdateStatus('${esc(r.id)}',this.value,this)">${STATUS_LIST.map(s => `<option value="${esc(s)}" ${s===v?'selected':''}>${esc(s)}</option>`).join('')}</select>`)
             : esc(v));
         const cellColIdx = colIdx - 1;
         return `<td class="cell" data-r="${rowIdx}" data-c="${cellColIdx}" data-key="${c.key}" onclick="cellClick(event,${rowIdx},${cellColIdx})">${display}</td>`;
@@ -1532,7 +1558,7 @@ function renderEmailList(){
     return `<tr>
       <td class="mono">${esc(e.email)}</td>
       <td>${used ? esc(names.join('、')) : '<span class="muted">—</span>'}</td>
-      <td>${used ? '<span class="tag tag-status-审核通过">已使用</span>' : '<span class="tag tag-status-待注册">未使用</span>'}</td>
+      <td>${used ? '<span class="tag tag-status-备案完成">已使用</span>' : '<span class="tag tag-status-待注册">未使用</span>'}</td>
       <td>${isSuper() ? `<div class="row-ops"><button class="icon-btn-sm del" onclick="deleteEmail(${i})">删除</button></div>` : '<span class="muted">只读</span>'}</td>
     </tr>`;
   }).join('');
@@ -1634,11 +1660,63 @@ function exportEmails(){
 }
 
 // ============ 首页看板 ============
+function isSameMonth(value, monthDate){
+  const text = String(value || '').trim();
+  if (!text) return false;
+  const key = `${monthDate.getFullYear()}-${String(monthDate.getMonth() + 1).padStart(2, '0')}`;
+  return text.slice(0, 7) === key;
+}
+
+function renderMonthlyStats(all, now){
+  const previousMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+  const previousLabel = `${previousMonth.getFullYear()}年${previousMonth.getMonth() + 1}月`;
+  const currentLabel = `${now.getFullYear()}年${now.getMonth() + 1}月`;
+  const lastCompleted = all.filter(r => isSameMonth(r.completionTime, previousMonth));
+  const lastSettled = lastCompleted.filter(r => {
+    const completed = String(r.completionTime || '').trim();
+    const settled = String(r.settlementTime || '').trim();
+    return settled && settled >= completed;
+  });
+  const currentCompleted = all.filter(r => isSameMonth(r.completionTime, now));
+  _monthlyMetricLists = { lastCompleted, lastSettled, currentCompleted };
+  const pending = Math.max(0, lastCompleted.length - lastSettled.length);
+  document.getElementById('monthlyStats').innerHTML = [
+    ['lastCompleted', `${previousLabel}备案完成`, lastCompleted.length, 'var(--primary)', '上月应结算批次'],
+    ['lastSettled', '已结算数量', lastSettled.length, 'var(--success)', `${previousLabel}批次，待结算 ${pending} 个`],
+    ['currentCompleted', `${currentLabel}备案完成`, currentCompleted.length, 'var(--warning)', '预计下月统一结算']
+  ].map(x => `<div class="stat-card status-card clickable" onclick="openMonthlyDetails('${x[0]}')" style="border-left:3px solid ${x[3]};">
+    <div class="num" style="color:${x[3]};">${x[2]}</div><div class="label">${x[1]}</div>
+    <div style="font-size:11px;color:var(--text-3);margin-top:5px;">${x[4]}</div>
+  </div>`).join('');
+}
+
+function openMonthlyDetails(key){
+  const titles = {
+    lastCompleted: '上月备案完成明细',
+    lastSettled: '上月备案批次已结算明细',
+    currentCompleted: '本月备案完成明细'
+  };
+  const rows = (_monthlyMetricLists[key] || []).slice().sort((a, b) =>
+    String(b.completionTime || '').localeCompare(String(a.completionTime || '')));
+  document.getElementById('monthlyDetailTitle').textContent = `${titles[key] || '月度明细'}（${rows.length}）`;
+  document.getElementById('monthlyDetailBody').innerHTML = rows.length ? rows.map(r => `<tr>
+    <td>${esc(r.companyName || '')}</td><td>${esc(r.miniProgramName || '(未命名)')}</td>
+    <td><span class="tag">${esc(r.status || '—')}</span></td>
+    <td class="mono">${esc(r.completionTime || '—')}</td><td class="mono">${esc(r.settlementTime || '—')}</td>
+  </tr>`).join('') : '<tr class="empty"><td colspan="5">暂无符合条件的记录</td></tr>';
+  document.getElementById('monthlyDetailModal').classList.add('show');
+}
+
+function closeMonthlyDetails(){
+  document.getElementById('monthlyDetailModal').classList.remove('show');
+}
+
 function renderDashboard(){
   const all = getAllRecords();
   const total = all.length;
   const now = new Date();
   document.getElementById('dashboardTime').textContent = now.toLocaleString('zh-CN', { year:'numeric', month:'2-digit', day:'2-digit', weekday:'long', hour:'2-digit', minute:'2-digit' });
+  renderMonthlyStats(all, now);
 
   const byStatus = {};
   STATUS_LIST.forEach(s => byStatus[s] = 0);
@@ -1698,7 +1776,8 @@ function renderDashboard(){
   // 最近提交
   const recent = all.filter(r => r.submitDate).sort((a,b) => new Date(b.submitDate) - new Date(a.submitDate)).slice(0, 10);
   document.getElementById('recentList').innerHTML = recent.length ? recent.map(r => `<tr><td>${esc(r.companyName||'')}</td><td>${esc(r.miniProgramName||'')}</td><td>${r.status ? `<span class="tag tag-status-${esc(r.status)}">${esc(r.status)}</span>` : '<span class="muted">—</span>'}</td><td class="mono">${esc(r.submitDate||'')}</td></tr>`).join('') : '<tr class="empty"><td colspan="4">暂无记录</td></tr>';
-  renderExceptionSummary();
+  if (isSuper()) renderExceptionSummary();
+  else document.getElementById('exceptionStats').innerHTML = '';
 }
 
 function openStatusFilter(status){
@@ -2022,9 +2101,8 @@ function init(){
   bulk.innerHTML = '<option value="">批量改状态</option>' + STATUS_LIST.map(s => `<option value="${esc(s)}">${esc(s)}</option>`).join('');
   renderStats(); renderFilters(); renderHead(); renderBody();
   renderEmailList(); renderCompanyManagement();
-  if (isSuper()) {
-    loadMonitorConfigToForm(); renderDashboard(); renderWorkbench();
-  }
+  renderDashboard();
+  if (isSuper()) { loadMonitorConfigToForm(); renderWorkbench(); }
 }
 
 document.getElementById('search').addEventListener('input', () => { page = 1; renderBody(); });

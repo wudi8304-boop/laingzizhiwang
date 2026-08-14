@@ -207,7 +207,12 @@ class MonitorService:
         rows = conn.execute("SELECT id FROM programs WHERE lower(trim(mini_program_name))=?", (normalized,)).fetchall()
         if rows:
             for row in rows:
-                conn.execute("UPDATE programs SET status='备案完成',updated_at=? WHERE id=?", (stamp, row["id"]))
+                conn.execute(
+                    """UPDATE programs SET
+                       completed_at=CASE WHEN status NOT IN ('备案完成','已结算') THEN ? ELSE completed_at END,
+                       status='备案完成',updated_at=? WHERE id=? AND status<>'已结算'""",
+                    (stamp, stamp, row["id"]),
+                )
         else:
             pid = "auto_" + hashlib.sha256((str(company["id"]) + ":" + normalized).encode("utf-8")).hexdigest()[:16]
             email_row = conn.execute(
@@ -218,10 +223,11 @@ class MonitorService:
             assigned_email = email_row["address"] if email_row else ""
             cur = conn.execute(
                 """INSERT OR IGNORE INTO programs(
-                   id,company_id,company_name,mini_program_name,status,email,task_reason,source,created_at,updated_at
-                   ) VALUES(?,?,?,?,?,?,?,'monitor',?,?)""",
+                   id,company_id,company_name,mini_program_name,status,email,task_reason,completed_at,
+                   source,created_at,updated_at
+                   ) VALUES(?,?,?,?,?,?,?,?,'monitor',?,?)""",
                 (pid, company["id"], company["name"], item["name"], "备案完成", assigned_email,
-                 "待补资料", stamp, stamp),
+                 "待补资料", stamp, stamp, stamp),
             )
             if cur.rowcount:
                 conn.execute(

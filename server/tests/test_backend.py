@@ -1,6 +1,7 @@
 import json
 import os
 import shutil
+import sqlite3
 import sys
 import tempfile
 import threading
@@ -9,6 +10,7 @@ import urllib.error
 import urllib.request
 from http.cookiejar import CookieJar
 from datetime import datetime
+from unittest.mock import patch
 
 SERVER_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, SERVER_DIR)
@@ -57,7 +59,7 @@ class BackendTest(unittest.TestCase):
         self.assertEqual("程序A", created["miniProgramName"])
         self.assertEqual("简介", created["description"])
         self.assertEqual("待注册", created["status"])
-        self.assertEqual("备案中", service.update("p1", {"status": "备案中"})["status"])
+        self.assertEqual("备案中", service.update("p1", {"status": "审核中"})["status"])
         service.update("p1", {"email": "b@example.com"})
         with self.db.connect() as conn:
             self.assertEqual(2, conn.execute("SELECT COUNT(*) n FROM emails").fetchone()["n"])
@@ -86,6 +88,64 @@ class BackendTest(unittest.TestCase):
         self.assertEqual("备案中", service.get("old1")["status"])
         self.assertEqual("已结算", service.get("old2")["status"])
         self.assertEqual("待注册", service.get("old3")["status"])
+        self.assertEqual("", service.get("old1")["completionTime"])
+        self.assertEqual("", service.get("old2")["settlementTime"])
+
+    def test_existing_database_adds_milestone_columns_and_lock(self):
+        path = os.path.join(self.tmp, "legacy.db")
+        conn = sqlite3.connect(path)
+        conn.execute(
+            """CREATE TABLE programs(
+               id TEXT PRIMARY KEY,company_id INTEGER,company_name TEXT NOT NULL DEFAULT '',
+               mini_program_name TEXT NOT NULL DEFAULT '',avatar_url TEXT NOT NULL DEFAULT '',
+               description TEXT NOT NULL DEFAULT '',category TEXT NOT NULL DEFAULT '',
+               appid TEXT NOT NULL DEFAULT '',original_id TEXT NOT NULL DEFAULT '',
+               secret TEXT NOT NULL DEFAULT '',admin TEXT NOT NULL DEFAULT '',
+               status TEXT NOT NULL DEFAULT '待注册',email TEXT NOT NULL DEFAULT '',
+               mini_program_password TEXT NOT NULL DEFAULT '',submit_date TEXT NOT NULL DEFAULT '',
+               task_reason TEXT NOT NULL DEFAULT '',external_id TEXT NOT NULL DEFAULT '',
+               source TEXT NOT NULL DEFAULT 'api',created_at TEXT NOT NULL,updated_at TEXT NOT NULL
+            )"""
+        )
+        conn.close()
+        legacy = Database(path)
+        legacy.initialize()
+        with legacy.connect() as upgraded:
+            columns = {row["name"] for row in upgraded.execute("PRAGMA table_info(programs)")}
+            self.assertTrue({"completed_at", "settled_at"} <= columns)
+            self.assertEqual(1, upgraded.execute(
+                """SELECT COUNT(*) n FROM sqlite_master
+                   WHERE type='trigger' AND name='prevent_settled_program_update'"""
+            ).fetchone()["n"])
+
+    def test_milestone_times_use_latest_status_transition(self):
+        service = ProgramService(self.db)
+        with patch("services.programs.now", return_value="2026-07-01 09:00:00"):
+            created = service.create({
+                "id": "p1", "companyName": "甲", "miniProgramName": "程序A", "status": "备案完成",
+            })
+        self.assertEqual("2026-07-01 09:00:00", created["completionTime"])
+        self.assertEqual("", created["settlementTime"])
+
+        with patch("services.programs.now", return_value="2026-07-02 09:00:00"):
+            unchanged = service.update("p1", {"status": "备案完成", "description": "补充"})
+        self.assertEqual("2026-07-01 09:00:00", unchanged["completionTime"])
+
+        service.update("p1", {"status": "待审核"})
+        with patch("services.programs.now", return_value="2026-07-03 09:00:00"):
+            recompleted = service.update("p1", {"status": "备案完成"})
+        self.assertEqual("2026-07-03 09:00:00", recompleted["completionTime"])
+
+        with patch("services.programs.now", return_value="2026-08-01 09:00:00"):
+            settled = service.update("p1", {"status": "已结算"})
+        self.assertEqual("2026-08-01 09:00:00", settled["settlementTime"])
+        with patch("services.programs.now", return_value="2026-08-02 09:00:00"):
+            with self.assertRaises(ValueError):
+                service.update("p1", {"status": "已结算", "category": "工具"})
+        with self.db.connect() as conn:
+            with self.assertRaises(sqlite3.IntegrityError):
+                conn.execute("UPDATE programs SET category='其他' WHERE id='p1'")
+        self.assertEqual("", service.get("p1")["category"])
 
     def test_admin_accounts_company_scope_and_session_version(self):
         auth = AuthService(self.db)
@@ -297,6 +357,25 @@ class BackendTest(unittest.TestCase):
         self.db.set_setting("vendor_last_sync_at", "2000-01-01 00:00:00")
         self.assertTrue(sync_due(self.db)[0])
 
+    def test_vendor_sync_skips_settled_programs(self):
+        service = ProgramService(self.db)
+        service.create({
+            "id": "locked", "companyName": "甲公司", "miniProgramName": "已结算程序",
+            "appid": "wx-locked", "status": "已结算",
+        })
+        synced = upsert_records(self.db, [{
+            "companyName": "甲公司", "miniProgramName": "已结算程序",
+            "appid": "wx-locked", "admin": "不应写入",
+        }], "test", new_companies_only=False)
+        self.assertEqual(0, synced["updated"])
+        self.assertEqual(1, synced["skipped"])
+        matched = match_records(self.db, [{
+            "miniProgramName": "已结算程序", "appid": "wx-locked", "admin": "仍不应写入",
+        }], "test")
+        self.assertEqual(0, matched["updated"])
+        self.assertEqual(1, matched["skipped"])
+        self.assertEqual("", service.get("locked")["admin"])
+
     def test_monitor_baseline_event_idempotency_and_matching(self):
         stamp = now()
         with self.db.connect() as conn:
@@ -324,9 +403,11 @@ class BackendTest(unittest.TestCase):
         self.assertEqual(1, len(calls["sent"]))
         with self.db.connect() as conn:
             self.assertEqual(1, conn.execute("SELECT COUNT(*) n FROM notifications").fetchone()["n"])
-            self.assertEqual("备案完成", conn.execute(
-                "SELECT status FROM programs WHERE mini_program_name='程序B'"
-            ).fetchone()["status"])
+            matched = conn.execute(
+                "SELECT status,completed_at FROM programs WHERE mini_program_name='程序B'"
+            ).fetchone()
+            self.assertEqual("备案完成", matched["status"])
+            self.assertEqual("2026-01-01 11:00:00", matched["completed_at"])
             self.assertEqual(2, conn.execute("SELECT COUNT(*) n FROM approved_programs").fetchone()["n"])
 
 

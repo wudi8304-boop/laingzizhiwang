@@ -8,7 +8,7 @@ import shutil
 from datetime import datetime
 
 from db import Database, now
-from services.programs import FIELDS
+from services.programs import FIELDS, normalize_status
 
 
 LEGACY_NAMES = (
@@ -145,6 +145,7 @@ def migrate(db=None, repo_root=None, data_dir=None, force=False):
             if not isinstance(record, dict):
                 continue
             record = dict(record)
+            record["status"] = normalize_status(record.get("status"))
             program_id = str(record.get("id") or "")
             exists = conn.execute("SELECT 1 FROM programs WHERE id=?", (program_id,)).fetchone() if program_id else None
             # 在同一事务内直接写，避免嵌套连接锁；字段映射与 ProgramService 一致。

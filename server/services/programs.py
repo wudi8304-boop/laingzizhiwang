@@ -5,6 +5,13 @@ from db import now
 
 
 DEFAULT_STATUS = "待注册"
+STATUS_ALIASES = {
+    "": DEFAULT_STATUS,
+    "审核中": "备案中",
+    "审核通过": "备案完成",
+    "待验收": "备案完成",
+    "已验收": "已结算",
+}
 FIELDS = {
     "companyName": "company_name", "miniProgramName": "mini_program_name",
     "avatarUrl": "avatar_url", "description": "description", "category": "category", "appid": "appid",
@@ -14,6 +21,11 @@ FIELDS = {
 }
 
 
+def normalize_status(value):
+    text = str(value or "").strip()
+    return STATUS_ALIASES.get(text, text)
+
+
 def external(row):
     if not row:
         return None
@@ -21,6 +33,8 @@ def external(row):
     result = {"id": d["id"]}
     for api, col in FIELDS.items():
         result[api] = d.get(col, "")
+    result["completionTime"] = d.get("completed_at", "")
+    result["settlementTime"] = d.get("settled_at", "")
     result["createdAt"] = d.get("created_at")
     result["updatedAt"] = d.get("updated_at")
     return result
@@ -99,12 +113,13 @@ class ProgramService:
 
     def create(self, data, actor="api"):
         data = dict(data)
-        if not str(data.get("status") or "").strip():
-            data["status"] = DEFAULT_STATUS
+        data["status"] = normalize_status(data.get("status"))
         self._apply_business_rules(data)
         actor = self._actor(actor)
         program_id = str(data.get("id") or ("rec_" + uuid.uuid4().hex[:12]))
         stamp = now()
+        completed_at = stamp if data["status"] == "备案完成" else ""
+        settled_at = stamp if data["status"] == "已结算" else ""
         values = [str(data.get(k) or "") for k in FIELDS]
         with self.db.transaction() as conn:
             if conn.execute("SELECT 1 FROM programs WHERE id=?", (program_id,)).fetchone():
@@ -115,8 +130,9 @@ class ProgramService:
             conn.execute(
                 """INSERT INTO programs(id,company_id,company_name,mini_program_name,avatar_url,description,category,
                    appid,original_id,secret,admin,status,email,mini_program_password,submit_date,task_reason,external_id,
-                   source,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
-                [program_id, company_id] + values + [actor, stamp, stamp],
+                   completed_at,settled_at,source,created_at,updated_at)
+                   VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                [program_id, company_id] + values + [completed_at, settled_at, actor, stamp, stamp],
             )
             self._ensure_email(conn, str(data.get("email") or ""))
             created = dict(data)
@@ -126,25 +142,37 @@ class ProgramService:
 
     def update(self, program_id, data, actor="api"):
         data = dict(data)
+        if "status" in data:
+            data["status"] = normalize_status(data.get("status"))
         with self.db.connect() as conn:
             current_row = self._assert_program(conn, program_id)
         if not current_row:
             return None
+        if current_row["status"] == "已结算":
+            raise ValueError("已结算的小程序已锁定，不允许修改")
         actor = self._actor(actor)
         current = external(current_row)
         self._apply_business_rules(data, current)
         updates, args = [], []
+        stamp = now()
         for api, col in FIELDS.items():
             if api in data:
                 updates.append(col + "=?"); args.append(str(data[api] or ""))
         if not updates:
             return self.get(program_id)
         with self.db.transaction() as conn:
+            target_status = str(data.get("status") or "")
+            if target_status == "备案完成" and current.get("status") != "备案完成":
+                updates.append("completed_at=?")
+                args.append(stamp)
+            if target_status == "已结算" and current.get("status") != "已结算":
+                updates.append("settled_at=?")
+                args.append(stamp)
             if "companyName" in data:
                 self._assert_company(conn, str(data.get("companyName") or ""))
                 updates.append("company_id=?")
                 args.append(self._company_id(conn, str(data.get("companyName") or "")))
-            updates.append("updated_at=?"); args.append(now()); args.append(program_id)
+            updates.append("updated_at=?"); args.append(stamp); args.append(program_id)
             conn.execute("UPDATE programs SET %s WHERE id=?" % ",".join(updates), args)
             if "email" in data:
                 self._ensure_email(conn, str(data.get("email") or ""))

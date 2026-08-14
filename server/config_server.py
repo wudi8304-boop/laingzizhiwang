@@ -205,8 +205,14 @@ def save_approved(db, data):
                 (str(entry.get("companyName") or ""), str(entry.get("companyFullName") or ""), name,
                  name.casefold(), str(entry.get("approvedAt") or ""), now(), now()),
             )
-            conn.execute("UPDATE programs SET status='备案完成',updated_at=? WHERE lower(trim(mini_program_name))=?",
-                         (now(), name.casefold()))
+            stamp = now()
+            conn.execute(
+                """UPDATE programs SET
+                   completed_at=CASE WHEN status NOT IN ('备案完成','已结算') THEN ? ELSE completed_at END,
+                   status='备案完成',updated_at=?
+                   WHERE lower(trim(mini_program_name))=? AND status<>'已结算'""",
+                (stamp, stamp, name.casefold()),
+            )
 
 
 class Handler(BaseHTTPRequestHandler):
