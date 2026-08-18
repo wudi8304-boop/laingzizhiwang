@@ -41,6 +41,8 @@ class MonitorService:
         times = self.db.get_setting("monitor_times", []) or []
         normalized = {str(t).strip()[:5] for t in times}
         hm = at.strftime("%H:%M")
+        if hm == "00:02":
+            return {"skipped": True, "reason": "reserved for account checkin"}
         if hm not in normalized:
             return {"skipped": True, "reason": "not due"}
         return self.run("scheduled", at.strftime("%Y-%m-%d %H:%M"), at)

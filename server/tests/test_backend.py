@@ -505,6 +505,11 @@ class BackendTest(unittest.TestCase):
             return True, "ok"
 
         service = MonitorService(self.db, query=query, sender=sender, sleeper=lambda _: None)
+        self.db.set_setting("monitor_times", ["00:02", "10:00"])
+        reserved = service.run_if_due(datetime(2026, 1, 1, 0, 2))
+        self.assertTrue(reserved["skipped"])
+        self.assertEqual("reserved for account checkin", reserved["reason"])
+        self.assertEqual(0, calls["run"], "00:02 只能执行签到，不能查询小程序备案")
         self.assertEqual("success", service.run("manual", "test-1", datetime(2026, 1, 1, 10, 0))["status"])
         self.assertEqual([], calls["sent"], "新公司首次检测只能建立 baseline")
         service.run("manual", "test-2", datetime(2026, 1, 1, 11, 0))
