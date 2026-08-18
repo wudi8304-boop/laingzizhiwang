@@ -17,6 +17,7 @@ from socketserver import ThreadingMixIn
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from db import Database, now
 from migrate_data import migrate
+from services.account import AccountService
 from services.auth import AuthService
 from services.monitor import MonitorBusyError, MonitorService
 from services.programs import ProgramService
@@ -113,20 +114,27 @@ def legacy_emails(db, principal=None):
     with db.connect() as conn:
         if principal and principal.get("role") != "super":
             rows = conn.execute(
-                """SELECT DISTINCT e.address,e.payload,e.sort_order,e.id
+                """SELECT DISTINCT e.address,e.payload,e.sort_order,e.id,e.usable,e.invalid_at,e.invalid_by
                    FROM emails e JOIN programs p ON lower(trim(p.email))=lower(trim(e.address))
                    JOIN companies c ON c.id=p.company_id
                    WHERE c.assigned_admin_id=? ORDER BY e.sort_order,e.id""",
                 (principal["id"],),
             ).fetchall()
         else:
-            rows = conn.execute("SELECT address,payload,sort_order,id FROM emails ORDER BY sort_order,id").fetchall()
+            rows = conn.execute(
+                """SELECT address,payload,sort_order,id,usable,invalid_at,invalid_by
+                   FROM emails ORDER BY usable,sort_order,id"""
+            ).fetchall()
     values = []
     for row in rows:
         payload = json.loads(row["payload"])
         if not isinstance(payload, dict):
             payload = {"email": row["address"]}
         payload["email"] = row["address"]
+        payload["usable"] = bool(row["usable"])
+        payload["emailStatus"] = "available" if row["usable"] else "invalid"
+        payload["invalidAt"] = row["invalid_at"] or ""
+        payload["invalidBy"] = row["invalid_by"] or ""
         values.append(payload)
     return values
 
@@ -135,14 +143,27 @@ def save_emails(db, data):
     if not isinstance(data, list):
         raise ValueError("data must be an array")
     with db.transaction() as conn:
+        seen = set()
         for index, entry in enumerate(data):
             payload = entry if isinstance(entry, dict) else {"email": entry}
             address = str(payload.get("email") or payload.get("address") or "").strip()
-            if address:
+            normalized = address.casefold()
+            if not address or normalized in seen:
+                continue
+            seen.add(normalized)
+            existing = conn.execute(
+                "SELECT id FROM emails WHERE lower(trim(address))=lower(trim(?))",
+                (address,),
+            ).fetchone()
+            if existing:
                 conn.execute(
-                    """INSERT INTO emails(address,payload,sort_order,created_at,updated_at) VALUES(?,?,?,?,?)
-                       ON CONFLICT(address) DO UPDATE SET payload=excluded.payload,
-                       sort_order=excluded.sort_order,updated_at=excluded.updated_at""",
+                    "UPDATE emails SET payload=?,sort_order=?,updated_at=? WHERE id=?",
+                    (json.dumps(payload, ensure_ascii=False), index, now(), existing["id"]),
+                )
+            else:
+                conn.execute(
+                    """INSERT INTO emails(address,payload,sort_order,created_at,updated_at)
+                       VALUES(?,?,?,?,?)""",
                     (address, json.dumps(payload, ensure_ascii=False), index, now(), now()),
                 )
         db.audit("replace", "emails", "", {"count": len(data)}, "api", conn)
@@ -392,6 +413,14 @@ class Handler(BaseHTTPRequestHandler):
             admin_id = data.get("adminId")
             auth.assign_company(company_id, int(admin_id) if admin_id not in (None, "") else None)
             return {"ok": True}
+        if path == "/api/account-automation":
+            account = AccountService(self.db)
+            if method == "GET":
+                return account.status()
+            if method == "PATCH":
+                if not isinstance(data, dict) or not isinstance(data.get("enabled"), bool):
+                    raise ValueError("签到开关必须是布尔值")
+                return account.set_enabled(data["enabled"], self.current_user.get("username", "api"))
         if path == "/api/vendor/settings" and method == "GET":
             return {
                 "syncDays": max(1, min(365, int(self.db.get_setting("vendor_sync_days", 1) or 1))),
@@ -473,10 +502,17 @@ class Handler(BaseHTTPRequestHandler):
         if path.startswith("/api/emails/") and method == "DELETE":
             address = urllib.parse.unquote(path.split("/", 3)[3])
             with self.db.transaction() as conn:
-                used = conn.execute("SELECT COUNT(*) n FROM programs WHERE email=?", (address,)).fetchone()["n"]
+                used = conn.execute(
+                    """SELECT COUNT(*) n FROM programs
+                       WHERE lower(trim(email))=lower(trim(?))""",
+                    (address,),
+                ).fetchone()["n"]
                 if used:
                     raise ValueError("该邮箱仍被 %d 个小程序使用" % used)
-                conn.execute("DELETE FROM emails WHERE address=?", (address,))
+                conn.execute(
+                    "DELETE FROM emails WHERE lower(trim(address))=lower(trim(?))",
+                    (address,),
+                )
                 self.db.audit("delete", "email", address, {}, "api", conn)
             return {"ok": True}
         if path == "/api/monitor":
@@ -500,6 +536,12 @@ class Handler(BaseHTTPRequestHandler):
             items = data.get("items", []) if isinstance(data, dict) else data
             if not isinstance(items, list): raise ValueError("items must be an array")
             return {"items": programs.bulk(items), "count": len(items)}
+        if path.startswith("/api/programs/") and path.endswith("/refresh-email") and method == "POST":
+            pid = urllib.parse.unquote(path.split("/")[3])
+            value = programs.refresh_email(pid)
+            if value is None:
+                raise KeyError("program")
+            return value
         if path.startswith("/api/programs/"):
             pid = urllib.parse.unquote(path.split("/", 3)[3])
             if method == "GET":

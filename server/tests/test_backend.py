@@ -18,6 +18,7 @@ sys.path.insert(0, SERVER_DIR)
 from db import Database, now
 from config_server import Handler, ThreadingHTTPServer
 from migrate_data import migrate
+from services.account import AccountService
 from services.auth import AuthService, verify_password
 from services.monitor import MonitorService
 from services.programs import ProgramService
@@ -107,12 +108,23 @@ class BackendTest(unittest.TestCase):
                source TEXT NOT NULL DEFAULT 'api',created_at TEXT NOT NULL,updated_at TEXT NOT NULL
             )"""
         )
+        conn.execute(
+            """CREATE TABLE emails(
+               id INTEGER PRIMARY KEY AUTOINCREMENT,address TEXT NOT NULL UNIQUE,
+               payload TEXT NOT NULL DEFAULT '{}',sort_order INTEGER NOT NULL DEFAULT 0,
+               created_at TEXT NOT NULL,updated_at TEXT NOT NULL
+            )"""
+        )
         conn.close()
         legacy = Database(path)
         legacy.initialize()
         with legacy.connect() as upgraded:
             columns = {row["name"] for row in upgraded.execute("PRAGMA table_info(programs)")}
             self.assertTrue({"completed_at", "settled_at"} <= columns)
+            email_columns = {
+                row["name"] for row in upgraded.execute("PRAGMA table_info(emails)")
+            }
+            self.assertTrue({"usable", "invalid_at", "invalid_by"} <= email_columns)
             self.assertEqual(1, upgraded.execute(
                 """SELECT COUNT(*) n FROM sqlite_master
                    WHERE type='trigger' AND name='prevent_settled_program_update'"""
@@ -146,6 +158,85 @@ class BackendTest(unittest.TestCase):
             with self.assertRaises(sqlite3.IntegrityError):
                 conn.execute("UPDATE programs SET category='其他' WHERE id='p1'")
         self.assertEqual("", service.get("p1")["category"])
+
+    def test_daily_checkin_switch_balance_and_idempotency(self):
+        calls = []
+
+        def requester(endpoint, params):
+            calls.append((endpoint, dict(params)))
+            if params.get("type") == "1":
+                return {"code": 200, "msg": "签到成功"}
+            return {"code": 200, "msg": "ok", "md": "9527", "username": "test"}
+
+        self.db.set_setting("monitor_apihz", {"id": "100", "key": "secret"})
+        account = AccountService(self.db, requester=requester, sleeper=lambda _: None)
+        self.assertTrue(account.run_if_due(datetime(2026, 8, 18, 0, 2))["skipped"])
+        account.set_enabled(True, "admin")
+        self.assertTrue(account.run_if_due(datetime(2026, 8, 18, 0, 1))["skipped"])
+        result = account.run_if_due(datetime(2026, 8, 18, 0, 2))
+        self.assertEqual("success", result["status"])
+        self.assertEqual("9527", result["balance"])
+        self.assertEqual(2, len(calls))
+        self.assertTrue(account.run_if_due(datetime(2026, 8, 18, 0, 2))["skipped"])
+        self.assertEqual(2, len(calls))
+        status = account.status()
+        self.assertTrue(status["enabled"])
+        self.assertEqual("9527", status["lastRun"]["balance"])
+        account.set_enabled(False, "admin")
+        self.assertTrue(account.run_if_due(datetime(2026, 8, 19, 0, 2))["skipped"])
+        self.assertEqual(2, len(calls))
+
+    def test_daily_checkin_failure_does_not_query_balance(self):
+        calls = []
+
+        def requester(endpoint, params):
+            calls.append((endpoint, dict(params)))
+            return {"code": 400, "msg": "签到失败"}
+
+        self.db.set_setting("monitor_apihz", {"id": "100", "key": "secret"})
+        self.db.set_setting("apihz_checkin_enabled", True)
+        account = AccountService(self.db, requester=requester, sleeper=lambda _: None)
+        with self.assertRaises(RuntimeError):
+            account.run_if_due(datetime(2026, 8, 18, 0, 2))
+        self.assertEqual(1, len(calls))
+        self.assertEqual("failed", account.status()["lastRun"]["status"])
+        with self.db.connect() as conn:
+            self.assertEqual(1, conn.execute(
+                "SELECT COUNT(*) n FROM exceptions WHERE reason='APIHZ每日签到失败'"
+            ).fetchone()["n"])
+
+    def test_refresh_email_marks_old_invalid_and_rolls_back_without_replacement(self):
+        service = ProgramService(self.db)
+        service.create({
+            "id": "p1", "companyName": "甲", "miniProgramName": "程序A",
+            "email": "OLD@EXAMPLE.COM",
+        })
+        stamp = now()
+        with self.db.connect() as conn:
+            conn.execute(
+                "UPDATE emails SET address='old@example.com' WHERE address='OLD@EXAMPLE.COM'"
+            )
+            conn.execute(
+                """INSERT INTO emails(address,payload,sort_order,created_at,updated_at)
+                   VALUES('new@example.com','{}',1,?,?)""",
+                (stamp, stamp),
+            )
+        refreshed = service.refresh_email("p1", "admin")
+        self.assertEqual("new@example.com", refreshed["newEmail"])
+        self.assertEqual("new@example.com", service.get("p1")["email"])
+        with self.db.connect() as conn:
+            old = conn.execute(
+                "SELECT usable,invalid_by FROM emails WHERE address='old@example.com'"
+            ).fetchone()
+        self.assertEqual(0, old["usable"])
+        self.assertEqual("admin", old["invalid_by"])
+
+        service.create({"id": "p2", "companyName": "甲", "miniProgramName": "程序B"})
+        with self.assertRaisesRegex(ValueError, "暂无可用"):
+            service.refresh_email("p2", "admin")
+        self.assertEqual("", service.get("p2")["email"])
+        with self.assertRaisesRegex(ValueError, "不能使用"):
+            service.update("p2", {"email": " old@example.com "})
 
     def test_admin_accounts_company_scope_and_session_version(self):
         auth = AuthService(self.db)
@@ -199,6 +290,12 @@ class BackendTest(unittest.TestCase):
         programs.create({"id": "p1", "companyName": "甲", "miniProgramName": "程序A", "email": "a@x.com"})
         programs.create({"id": "p2", "companyName": "乙", "miniProgramName": "程序B", "email": "b@x.com"})
         with self.db.connect() as conn:
+            stamp = now()
+            conn.execute(
+                """INSERT INTO emails(address,payload,sort_order,created_at,updated_at)
+                   VALUES('spare@x.com','{}',99,?,?)""",
+                (stamp, stamp),
+            )
             company_id = conn.execute("SELECT id FROM companies WHERE name='甲'").fetchone()["id"]
         auth.assign_company(company_id, sub["id"])
 
@@ -249,6 +346,18 @@ class BackendTest(unittest.TestCase):
             code, emails = call(sub_client, "GET", "/api/emails")
             self.assertEqual(200, code)
             self.assertEqual(["a@x.com"], [row["email"] for row in emails["data"]])
+            self.assertEqual(403, call(sub_client, "GET", "/api/account-automation")[0])
+            code, refreshed = call(sub_client, "POST", "/api/programs/p1/refresh-email", {})
+            self.assertEqual(200, code)
+            self.assertEqual("spare@x.com", refreshed["newEmail"])
+            self.assertEqual(403, call(sub_client, "POST", "/api/programs/p2/refresh-email", {})[0])
+
+            code, account = call(admin_client, "GET", "/api/account-automation")
+            self.assertEqual(200, code)
+            self.assertFalse(account["data"]["enabled"])
+            code, account = call(admin_client, "PATCH", "/api/account-automation", {"enabled": True})
+            self.assertEqual(200, code)
+            self.assertTrue(account["enabled"])
         finally:
             server.shutdown()
             server.server_close()

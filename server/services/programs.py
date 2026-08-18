@@ -127,6 +127,7 @@ class ProgramService:
             company_name = str(data.get("companyName") or "")
             self._assert_company(conn, company_name)
             company_id = self._company_id(conn, company_name)
+            self._assert_email_available(conn, str(data.get("email") or ""), program_id)
             conn.execute(
                 """INSERT INTO programs(id,company_id,company_name,mini_program_name,avatar_url,description,category,
                    appid,original_id,secret,admin,status,email,mini_program_password,submit_date,task_reason,external_id,
@@ -161,6 +162,8 @@ class ProgramService:
         if not updates:
             return self.get(program_id)
         with self.db.transaction() as conn:
+            if "email" in data:
+                self._assert_email_available(conn, str(data.get("email") or ""), program_id)
             target_status = str(data.get("status") or "")
             if target_status == "备案完成" and current.get("status") != "备案完成":
                 updates.append("completed_at=?")
@@ -186,6 +189,68 @@ class ProgramService:
                 "update", "program", program_id, {"before": current, "changes": data}, actor, conn
             )
         return self.get(program_id)
+
+    def refresh_email(self, program_id, actor="api"):
+        actor = self._actor(actor)
+        with self.db.transaction() as conn:
+            row = self._assert_program(conn, program_id)
+            if not row:
+                return None
+            if row["status"] == "已结算":
+                raise ValueError("已结算的小程序已锁定，不允许更换邮箱")
+            replacement = conn.execute(
+                """SELECT e.address FROM emails e
+                   WHERE e.usable=1
+                     AND lower(trim(e.address))<>lower(trim(?))
+                     AND NOT EXISTS (
+                       SELECT 1 FROM programs p
+                       WHERE lower(trim(p.email))=lower(trim(e.address))
+                     )
+                   ORDER BY RANDOM() LIMIT 1""",
+                (row["email"] or "",),
+            ).fetchone()
+            if not replacement:
+                raise ValueError("暂无可用且未绑定的新邮箱，当前邮箱未作修改")
+            old_email = str(row["email"] or "").strip()
+            new_email = replacement["address"]
+            stamp = now()
+            if old_email:
+                existing_email = conn.execute(
+                    "SELECT id FROM emails WHERE lower(trim(address))=lower(trim(?))",
+                    (old_email,),
+                ).fetchone()
+                if existing_email:
+                    conn.execute(
+                        """UPDATE emails SET usable=0,invalid_at=?,invalid_by=?,updated_at=?
+                           WHERE id=?""",
+                        (stamp, actor, stamp, existing_email["id"]),
+                    )
+                else:
+                    next_order = conn.execute(
+                        "SELECT COALESCE(MAX(sort_order),-1)+1 n FROM emails"
+                    ).fetchone()["n"]
+                    conn.execute(
+                        """INSERT INTO emails(
+                           address,payload,sort_order,usable,invalid_at,invalid_by,created_at,updated_at
+                           ) VALUES(?,?,?,?,?,?,?,?)""",
+                        (
+                            old_email, json.dumps({"email": old_email}, ensure_ascii=False),
+                            next_order, 0, stamp, actor, stamp, stamp,
+                        ),
+                    )
+            conn.execute(
+                "UPDATE programs SET email=?,updated_at=? WHERE id=?",
+                (new_email, stamp, program_id),
+            )
+            self.db.audit(
+                "refresh_email", "program", program_id,
+                {"oldEmail": old_email, "newEmail": new_email}, actor, conn,
+            )
+        return {
+            "program": self.get(program_id),
+            "oldEmail": old_email,
+            "newEmail": new_email,
+        }
 
     def delete(self, program_id, actor="api"):
         actor = self._actor(actor)
@@ -234,7 +299,9 @@ class ProgramService:
         address = str(address or "").strip()
         if not address:
             return
-        if conn.execute("SELECT 1 FROM emails WHERE lower(address)=lower(?)", (address,)).fetchone():
+        if conn.execute(
+            "SELECT 1 FROM emails WHERE lower(trim(address))=lower(trim(?))", (address,)
+        ).fetchone():
             return
         sort_order = conn.execute("SELECT COALESCE(MAX(sort_order),-1)+1 n FROM emails").fetchone()["n"]
         stamp = now()
@@ -243,3 +310,22 @@ class ProgramService:
                VALUES(?,?,?,?,?)""",
             (address, json.dumps({"email": address}, ensure_ascii=False), sort_order, stamp, stamp),
         )
+
+    @staticmethod
+    def _assert_email_available(conn, address, program_id):
+        address = str(address or "").strip()
+        if not address:
+            return
+        email = conn.execute(
+            "SELECT usable FROM emails WHERE lower(trim(address))=lower(trim(?))",
+            (address,),
+        ).fetchone()
+        if email and not email["usable"]:
+            raise ValueError("该邮箱已标记为不能使用")
+        used = conn.execute(
+            """SELECT id FROM programs
+               WHERE lower(trim(email))=lower(trim(?)) AND id<>? LIMIT 1""",
+            (address, str(program_id)),
+        ).fetchone()
+        if used:
+            raise ValueError("该邮箱已绑定其他小程序")

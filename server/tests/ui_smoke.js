@@ -47,6 +47,11 @@ const { chromium } = require("playwright");
     const cards = await page.locator("#companyCards .company-card").count();
     const role = await page.locator("#currentUserLabel").innerText();
     if (!role.includes("总管理员")) throw new Error("unexpected role label: " + role);
+    await page.click('.nav-item[data-page="monitor"]');
+    await page.waitForSelector("#page-monitor.active", { timeout: 10000 });
+    if (!await page.locator("#accountCheckinEnabled").count()) {
+      throw new Error("daily checkin toggle missing");
+    }
     await page.click('.nav-item[data-page="data"]');
     await page.waitForSelector("#page-data.active", { timeout: 10000 });
     const headers = await page.locator("#thead th").allInnerTexts();
@@ -78,6 +83,9 @@ const { chromium } = require("playwright");
     await page.waitForSelector("#editModal.show", { timeout: 10000 });
     for (const selector of ["#f_avatarUrl", "#f_miniProgramPassword", "#f_description", "#f_category"]) {
       if (!await page.locator(selector).count()) throw new Error("edit field missing: " + selector);
+    }
+    if (!await page.locator("#editModal button", { hasText: "刷新换邮箱" }).count()) {
+      throw new Error("refresh email action missing");
     }
     await page.locator("#editModal .close").click();
     if (errors.length) throw new Error("page errors: " + errors.join("; "));

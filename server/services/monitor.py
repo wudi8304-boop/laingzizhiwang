@@ -216,9 +216,12 @@ class MonitorService:
         else:
             pid = "auto_" + hashlib.sha256((str(company["id"]) + ":" + normalized).encode("utf-8")).hexdigest()[:16]
             email_row = conn.execute(
-                """SELECT address FROM emails
-                   WHERE address NOT IN (SELECT email FROM programs WHERE email<>'')
-                   ORDER BY sort_order,id LIMIT 1"""
+                """SELECT e.address FROM emails e
+                   WHERE e.usable=1 AND NOT EXISTS (
+                     SELECT 1 FROM programs p
+                     WHERE lower(trim(p.email))=lower(trim(e.address))
+                   )
+                   ORDER BY e.sort_order,e.id LIMIT 1"""
             ).fetchone()
             assigned_email = email_row["address"] if email_row else ""
             cur = conn.execute(
@@ -246,10 +249,12 @@ class MonitorService:
             ).fetchall()
         for row in rows:
             payload = json.loads(row["payload"])
-            content = "【备案监控】%s 新增小程序：%s%s" % (
-                payload["companyName"], payload["name"],
-                ("（%s）" % payload["icp"]) if payload.get("icp") else "",
-            )
+            content = str(payload.get("content") or "")
+            if not content:
+                content = "【备案监控】%s 新增小程序：%s%s" % (
+                    payload["companyName"], payload["name"],
+                    ("（%s）" % payload["icp"]) if payload.get("icp") else "",
+                )
             attempts = row["attempts"]
             attempts_this_run = 0
             while attempts_this_run < 3 and attempts < 9:

@@ -372,7 +372,7 @@
         </div>
       </div>
       <div class="help-tip">
-        💡 邮箱状态根据小程序列表自动匹配：邮箱被某小程序使用则显示对应小程序名+已使用；未被使用显示"未使用"。
+        💡 “不能使用”邮箱由小程序编辑页的刷新换绑产生，并置顶供总管理员定期删除；其余邮箱按绑定情况显示“已使用/未使用”。
       </div>
       <div class="table-wrap">
         <table>
@@ -432,6 +432,17 @@
         </div>
         <div class="help-tip" style="margin-top:8px;margin-bottom:0;font-size:11px;">
           接口地址：cn.apihz.cn/api/wangzhan/syicpxcx.php，单价 10 盟点/次。ID/KEY 在 apihz.cn 后台【个人资料】查看。
+        </div>
+      </div>
+      <div class="section config-section">
+        <div class="section-title">每日签到与盟点余额</div>
+        <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
+          <label class="switch"><input type="checkbox" id="accountCheckinEnabled" onchange="toggleAccountCheckin(this)"><span class="slider"></span></label>
+          <span id="accountCheckinState" class="status-text">自动签到已关闭</span>
+          <span id="accountBalance" style="font-size:13px;color:var(--text-2);">盟点余额：—</span>
+        </div>
+        <div id="accountCheckinDetail" class="help-tip" style="margin-top:8px;margin-bottom:0;font-size:11px;">
+          开启后每天 00:02 自动签到，签到成功后查询盟点余额；关闭后不会查询余额。
         </div>
       </div>
       <div class="section config-section">
@@ -587,6 +598,7 @@ let _auditCache = [];
 let _sessionUser = null;
 let _companiesCache = [];
 let _adminsCache = [];
+let _accountAutomationCache = { enabled: false, time: '00:02', lastRun: null };
 let _monthlyMetricLists = {};
 let _emailsSaving = false;
 let _monitorSaveQueue = Promise.resolve();
@@ -646,10 +658,11 @@ async function initRemoteConfig(){
     _companiesCache = Array.isArray(base[2]) ? base[2] : [];
     if (isSuper()) {
       const adminValues = await Promise.all([
-        apiGet('/api/monitor'), apiGet('/api/admin-users')
+        apiGet('/api/monitor'), apiGet('/api/admin-users'), apiGet('/api/account-automation')
       ]);
       _monitorCache = adminValues[0] || JSON.parse(JSON.stringify(DEFAULT_MONITOR_CONFIG));
       _adminsCache = Array.isArray(adminValues[1]) ? adminValues[1] : [];
+      _accountAutomationCache = adminValues[2] || { enabled: false, time: '00:02', lastRun: null };
       await Promise.all([refreshWorkbench(), loadVendorSettings()]);
     } else {
       _monitorCache = JSON.parse(JSON.stringify(DEFAULT_MONITOR_CONFIG));
@@ -1243,7 +1256,7 @@ function openEdit(id){
     else if (f.type === 'date') { const dv = val ? val.split(' ')[0] : ''; input = `<input type="date" id="f_${c.key}" value="${esc(dv)}">`; }
     else if (f.type === 'textarea') input = `<textarea id="f_${c.key}">${esc(val)}</textarea>`;
     else if (c.key === 'avatarUrl') input = `<input type="text" id="f_${c.key}" value="${esc(val)}" placeholder="https://..." oninput="updateAvatarPreview(this.value)"><div class="avatar-preview" id="avatarPreviewBox">${avatarHtml(val, true)}</div>`;
-    else if (c.key === 'email') input = `<input type="text" id="f_${c.key}" list="unusedEmailList" value="${esc(val)}" placeholder="输入或选择未使用邮箱">`;
+    else if (c.key === 'email') input = `<div style="display:flex;gap:6px;"><input style="flex:1;" type="text" id="f_${c.key}" list="unusedEmailList" value="${esc(val)}" placeholder="输入或选择未使用邮箱"><button type="button" class="btn ghost sm" onclick="refreshProgramEmail(this)">刷新换邮箱</button></div>`;
     else input = `<input type="text" id="f_${c.key}" value="${esc(val)}">`;
     return `<div class="form-item${fullWidth}"><label>${c.label}</label>${input}</div>`;
   }).join('');
@@ -1252,6 +1265,31 @@ function openEdit(id){
 }
 
 function closeModal(){ document.getElementById('editModal').classList.remove('show'); }
+
+async function refreshProgramEmail(btn){
+  if (!editingId) { showToast('请先保存小程序后再刷新邮箱', 'error'); return; }
+  const current = (getAllRecords().find(r => String(r.id) === String(editingId)) || {}).email || '';
+  if (!confirm(`确认将当前邮箱“${current || '(空)'}”标记为不能使用，并自动更换新邮箱？`)) return;
+  btn.disabled = true;
+  const oldText = btn.textContent;
+  btn.textContent = '更换中...';
+  try {
+    const result = await apiPost('/api/programs/' + encodeURIComponent(editingId) + '/refresh-email', {});
+    const idx = _recordsCache.findIndex(r => String(r.id) === String(editingId));
+    if (idx >= 0) _recordsCache[idx] = result.program;
+    _emailsCache = await apiGet('/api/emails');
+    document.getElementById('f_email').value = result.newEmail || '';
+    refreshUnusedEmailDatalist();
+    renderEmailList();
+    render();
+    showToast(`旧邮箱已标记为不能使用，已更换为 ${result.newEmail}`, 'success');
+  } catch(e) {
+    showToast('邮箱刷新失败：' + e.message, 'error');
+  } finally {
+    btn.disabled = false;
+    btn.textContent = oldText;
+  }
+}
 
 async function saveRecord(){
   const data = {};
@@ -1514,6 +1552,7 @@ function exportJSON(){
 
 // ============ 邮箱列表 ============
 function getEmails(){ return Array.isArray(_emailsCache) ? JSON.parse(JSON.stringify(_emailsCache)) : []; }
+function normalizeEmail(value){ return String(value || '').trim().toLowerCase(); }
 async function setEmails(arr){
   if (!_useApi) throw new Error('服务器未连接，暂不能提交邮箱');
   if (_emailsSaving) throw new Error('邮箱正在同步，请稍后再试');
@@ -1528,8 +1567,8 @@ async function setEmails(arr){
 
 // 未被小程序使用的邮箱（用于新增小程序时搜索选择）
 function getUnusedEmails(){
-  const usedEmails = new Set(getAllRecords().map(r => r.email).filter(Boolean));
-  return getEmails().filter(e => !usedEmails.has(e.email));
+  const usedEmails = new Set(getAllRecords().map(r => normalizeEmail(r.email)).filter(Boolean));
+  return getEmails().filter(e => e.usable !== false && !usedEmails.has(normalizeEmail(e.email)));
 }
 
 // 刷新新增/编辑小程序表单中邮箱字段的候选未使用邮箱
@@ -1543,23 +1582,30 @@ function renderEmailList(){
   const emails = getEmails();
   const all = getAllRecords();
   const emailMap = {};
-  all.forEach(r => { if (r.email) { (emailMap[r.email] = emailMap[r.email] || []).push(r.miniProgramName); } });
+  all.forEach(r => {
+    const key = normalizeEmail(r.email);
+    if (key) (emailMap[key] = emailMap[key] || []).push(r.miniProgramName);
+  });
   const body = document.getElementById('emailBody');
   if (emails.length === 0) { body.innerHTML = '<tr class="empty"><td colspan="4">暂无邮箱，请导入或新增</td></tr>'; return; }
-  // 排序：未使用在前，已使用在后
+  // 排序：不能使用置顶，其余未使用在前、已使用在后
   emails.sort((a, b) => {
-    const au = emailMap[a.email] ? 1 : 0, bu = emailMap[b.email] ? 1 : 0;
+    const ai = a.usable === false ? 0 : 1, bi = b.usable === false ? 0 : 1;
+    if (ai !== bi) return ai - bi;
+    const au = emailMap[normalizeEmail(a.email)] ? 1 : 0;
+    const bu = emailMap[normalizeEmail(b.email)] ? 1 : 0;
     if (au !== bu) return au - bu;
     return a.email.localeCompare(b.email);
   });
-  body.innerHTML = emails.map((e, i) => {
-    const names = emailMap[e.email] ? emailMap[e.email].filter(Boolean) : [];
+  body.innerHTML = emails.map(e => {
+    const names = emailMap[normalizeEmail(e.email)] ? emailMap[normalizeEmail(e.email)].filter(Boolean) : [];
     const used = names.length > 0;
+    const invalid = e.usable === false;
     return `<tr>
       <td class="mono">${esc(e.email)}</td>
       <td>${used ? esc(names.join('、')) : '<span class="muted">—</span>'}</td>
-      <td>${used ? '<span class="tag tag-status-备案完成">已使用</span>' : '<span class="tag tag-status-待注册">未使用</span>'}</td>
-      <td>${isSuper() ? `<div class="row-ops"><button class="icon-btn-sm del" onclick="deleteEmail(${i})">删除</button></div>` : '<span class="muted">只读</span>'}</td>
+      <td>${invalid ? `<span class="tag tag-status-待注册">不能使用</span>${e.invalidAt ? `<div class="muted" style="font-size:10px;">${esc(e.invalidAt)}</div>` : ''}` : (used ? '<span class="tag tag-status-备案完成">已使用</span>' : '<span class="tag tag-status-待审核">未使用</span>')}</td>
+      <td>${isSuper() ? `<div class="row-ops"><button class="icon-btn-sm del" onclick="deleteEmail('${encodeURIComponent(e.email)}')">删除</button></div>` : '<span class="muted">只读</span>'}</td>
     </tr>`;
   }).join('');
 }
@@ -1591,9 +1637,9 @@ function importEmails(event){
     parsed = [...new Set(parsed.filter(e => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e)))];
     if (parsed.length === 0) { showToast('未找到有效邮箱', 'error'); return; }
     const list = getEmails().slice();
-    const exist = new Set(list.map(e => e.email));
+    const exist = new Set(list.map(e => normalizeEmail(e.email)));
     let added = 0;
-    parsed.forEach(em => { if (!exist.has(em)) { list.push({ email: em, _id: 'em_' + Date.now() + '_' + Math.random().toString(36).slice(2,8) }); exist.add(em); added++; } });
+    parsed.forEach(em => { const key = normalizeEmail(em); if (!exist.has(key)) { list.push({ email: em, _id: 'em_' + Date.now() + '_' + Math.random().toString(36).slice(2,8) }); exist.add(key); added++; } });
     try {
       await setEmails(list);
     } catch(e) {
@@ -1619,7 +1665,7 @@ async function saveEmail(){
   if (!em) { showToast('请输入邮箱地址', 'error'); return; }
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(em)) { showToast('邮箱格式不正确', 'error'); return; }
   const list = getEmails().slice();
-  if (list.some(e => e.email === em)) { showToast('该邮箱已存在', 'error'); return; }
+  if (list.some(e => normalizeEmail(e.email) === normalizeEmail(em))) { showToast('该邮箱已存在', 'error'); return; }
   list.push({ email: em, _id: 'em_' + Date.now() + '_' + Math.random().toString(36).slice(2,8) });
   try {
     await setEmails(list);
@@ -1631,9 +1677,11 @@ async function saveEmail(){
   showToast('已新增邮箱并同步服务器', 'success');
 }
 
-async function deleteEmail(idx){
-  const target = getEmails()[idx];
-  const usedBy = target ? getAllRecords().filter(r => r.email === target.email) : [];
+async function deleteEmail(encodedAddress){
+  const address = decodeURIComponent(encodedAddress);
+  const target = getEmails().find(e => normalizeEmail(e.email) === normalizeEmail(address));
+  const usedBy = target ? getAllRecords().filter(r => normalizeEmail(r.email) === normalizeEmail(target.email)) : [];
+  if (!target) { showToast('邮箱不存在，请刷新后重试', 'error'); return; }
   if (usedBy.length) {
     showToast('该邮箱仍被 ' + usedBy.length + ' 个小程序使用，不能删除', 'error');
     return;
@@ -1916,7 +1964,47 @@ function loadMonitorConfigToForm(){
     setMonitorConfig(cfg).catch(e => showToast('时间格式同步失败：' + e.message, 'error'));
   }
   renderTimeList(times);
+  renderAccountAutomation();
   updateMonitorStats();
+}
+
+function renderAccountAutomation(){
+  const value = _accountAutomationCache || { enabled:false, time:'00:02', lastRun:null };
+  const toggle = document.getElementById('accountCheckinEnabled');
+  const state = document.getElementById('accountCheckinState');
+  const balance = document.getElementById('accountBalance');
+  const detail = document.getElementById('accountCheckinDetail');
+  if (!toggle || !state || !balance || !detail) return;
+  toggle.checked = !!value.enabled;
+  state.textContent = value.enabled ? '自动签到已开启' : '自动签到已关闭';
+  state.className = 'status-text ' + (value.enabled ? 'running' : '');
+  const last = value.lastRun;
+  balance.textContent = '盟点余额：' + (last && last.balance !== '' ? last.balance : '—');
+  if (!last) {
+    detail.textContent = '开启后每天 00:02 自动签到，签到成功后查询盟点余额；尚无执行记录。';
+    return;
+  }
+  const statusText = {
+    success:'成功', checkin_success:'签到成功，余额待查询',
+    balance_failed:'签到成功，余额查询失败', failed:'失败', running:'执行中'
+  }[last.status] || last.status;
+  detail.textContent = `最近执行：${last.run_date || '—'} ${statusText}` +
+    (last.checkin_message ? `；${last.checkin_message}` : '') +
+    (last.error ? `；${last.error}` : '');
+}
+
+async function toggleAccountCheckin(input){
+  input.disabled = true;
+  try {
+    _accountAutomationCache = await apiPatch('/api/account-automation', { enabled: !!input.checked });
+    renderAccountAutomation();
+    showToast(input.checked ? '已开启每日 00:02 自动签到' : '已关闭自动签到和余额查询', 'success');
+  } catch(e) {
+    input.checked = !input.checked;
+    showToast('签到开关保存失败：' + e.message, 'error');
+  } finally {
+    input.disabled = false;
+  }
 }
 
 function renderCompanyMonitorList(companies){

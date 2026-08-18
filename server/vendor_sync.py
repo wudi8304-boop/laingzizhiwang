@@ -62,7 +62,7 @@ def random_unused_email(db):
     with db.connect() as conn:
         row = conn.execute(
             """SELECT e.address FROM emails e
-               WHERE trim(e.address)<>''
+               WHERE e.usable=1 AND trim(e.address)<>''
                  AND NOT EXISTS (
                    SELECT 1 FROM programs p
                    WHERE lower(trim(p.email))=lower(trim(e.address))

@@ -48,7 +48,9 @@ BEGIN
 END;
 CREATE TABLE IF NOT EXISTS emails (
  id INTEGER PRIMARY KEY AUTOINCREMENT, address TEXT NOT NULL UNIQUE, payload TEXT NOT NULL DEFAULT '{}',
- sort_order INTEGER NOT NULL DEFAULT 0, created_at TEXT NOT NULL, updated_at TEXT NOT NULL
+ sort_order INTEGER NOT NULL DEFAULT 0, usable INTEGER NOT NULL DEFAULT 1,
+ invalid_at TEXT, invalid_by TEXT NOT NULL DEFAULT '',
+ created_at TEXT NOT NULL, updated_at TEXT NOT NULL
 );
 CREATE TABLE IF NOT EXISTS settings (
  key TEXT PRIMARY KEY, value TEXT NOT NULL, updated_at TEXT NOT NULL
@@ -93,6 +95,12 @@ CREATE TABLE IF NOT EXISTS import_jobs (
  id INTEGER PRIMARY KEY AUTOINCREMENT, source TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'pending',
  source_ref TEXT NOT NULL DEFAULT '', summary TEXT NOT NULL DEFAULT '{}', error TEXT,
  started_at TEXT NOT NULL, finished_at TEXT
+);
+CREATE TABLE IF NOT EXISTS apihz_account_runs (
+ run_date TEXT PRIMARY KEY, status TEXT NOT NULL DEFAULT 'running',
+ checkin_succeeded INTEGER NOT NULL DEFAULT 0, checkin_message TEXT NOT NULL DEFAULT '',
+ balance TEXT NOT NULL DEFAULT '', account_payload TEXT NOT NULL DEFAULT '{}',
+ started_at TEXT NOT NULL, finished_at TEXT, error TEXT
 );
 """
 
@@ -141,6 +149,14 @@ class Database:
             )
             conn.execute("CREATE INDEX IF NOT EXISTS idx_programs_completed_at ON programs(completed_at)")
             conn.execute("CREATE INDEX IF NOT EXISTS idx_programs_settled_at ON programs(settled_at)")
+            email_columns = {row["name"] for row in conn.execute("PRAGMA table_info(emails)")}
+            if "usable" not in email_columns:
+                conn.execute("ALTER TABLE emails ADD COLUMN usable INTEGER NOT NULL DEFAULT 1")
+            if "invalid_at" not in email_columns:
+                conn.execute("ALTER TABLE emails ADD COLUMN invalid_at TEXT")
+            if "invalid_by" not in email_columns:
+                conn.execute("ALTER TABLE emails ADD COLUMN invalid_by TEXT NOT NULL DEFAULT ''")
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_emails_usable ON emails(usable,sort_order,id)")
             company_columns = {row["name"] for row in conn.execute("PRAGMA table_info(companies)")}
             if "assigned_admin_id" not in company_columns:
                 conn.execute("ALTER TABLE companies ADD COLUMN assigned_admin_id INTEGER")
