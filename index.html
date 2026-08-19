@@ -197,7 +197,9 @@
   .progress-value { height:100%;background:var(--success); }
   .admin-row { display:flex;gap:8px;align-items:center;padding:8px 0;border-bottom:1px solid #f0f2f5;flex-wrap:wrap; }
   .avatar-thumb { width:36px;height:36px;border-radius:7px;object-fit:cover;border:1px solid var(--border);background:#f5f7fa;display:block; }
+  .avatar-thumb.clickable { cursor:pointer; }
   .avatar-preview { display:flex;align-items:center;gap:10px;margin-top:6px;color:var(--text-3);font-size:12px; }
+  .avatar-preview .avatar-thumb { width:72px;height:72px; }
 
   @media (max-width: 768px) {
     .sidebar { width: 60px; }
@@ -677,13 +679,15 @@ async function initRemoteConfig(){
 const COLS = [
   { key: 'companyName', label: '公司', type: 'text', sortable: true, form: { type: 'select', options: [] } },
   { key: 'miniProgramName', label: '小程序名称', type: 'copy', sortable: true, form: { type: 'text' } },
-  { key: 'avatarUrl', label: '头像', type: 'avatar', form: { type: 'text' } },
+  { key: 'avatarUrl', label: '头像', type: 'avatar', form: { type: 'avatar' } },
   { key: 'description', label: '简介', type: 'text', sortable: true, form: { type: 'textarea' }, tableShow: false },
   { key: 'category', label: '类目', type: 'text', sortable: true, form: { type: 'text' }, tableShow: false },
   { key: 'appid', label: 'AppID', type: 'copy', sortable: true, form: { type: 'text' } },
   { key: 'originalId', label: '原始ID', type: 'copy', form: { type: 'text' } },
   { key: 'secret', label: '密钥', type: 'copy', form: { type: 'textarea' } },
   { key: 'admin', label: '管理员', sortable: true, form: { type: 'text' } },
+  { key: 'legalPersonPhone', label: '法人手机号', type: 'mono', sortable: true, form: { type: 'text' } },
+  { key: 'miniProgramPhone', label: '小程序手机号', type: 'mono', sortable: true, form: { type: 'text' } },
   { key: 'status', label: '状态', type: 'status', sortable: true, form: { type: 'select', options: ['待注册', '待审核', '备案中', '备案完成', '已结算'] } },
   { key: 'email', label: '邮箱', type: 'mono', form: { type: 'text' } },
   { key: 'miniProgramPassword', label: '小程序密码', type: 'copy', form: { type: 'text' }, tableShow: false },
@@ -893,17 +897,36 @@ function safeAvatarUrl(value){
   const text = String(value || '').trim();
   return /^https?:\/\//i.test(text) ? text : '';
 }
-function avatarHtml(value, preview){
+function avatarHtml(value, preview, programId){
   const url = safeAvatarUrl(value);
   const idAttr = preview ? ' id="avatarPreviewImage"' : '';
   if (!url) return preview
-    ? '<span id="avatarPreviewEmpty">暂无有效头像 URL</span>'
+    ? '<span id="avatarPreviewEmpty">暂无头像</span>'
     : '<span class="muted">无头像</span>';
-  return `<img${idAttr} class="avatar-thumb" src="${esc(url)}" alt="小程序头像" referrerpolicy="no-referrer" onerror="this.style.display='none';this.nextElementSibling.style.display='inline';"><span class="muted" style="display:none;">加载失败</span>`;
+  const download = programId
+    ? ` class="avatar-thumb clickable" onclick="downloadProgramAvatar('${esc(programId)}',event)" title="点击下载头像"`
+    : ' class="avatar-thumb"';
+  return `<img${idAttr}${download} src="${esc(url)}" alt="小程序头像" referrerpolicy="no-referrer" onerror="this.style.display='none';this.nextElementSibling.style.display='inline';"><span class="muted" style="display:none;">加载失败</span>`;
 }
-function updateAvatarPreview(value){
-  const box = document.getElementById('avatarPreviewBox');
-  if (box) box.innerHTML = avatarHtml(value, true);
+async function downloadProgramAvatar(id, event){
+  if (event) event.stopPropagation();
+  try {
+    const r = await fetch('/api/programs/' + encodeURIComponent(id) + '/avatar', { credentials: 'same-origin' });
+    if (!r.ok) {
+      let payload = null;
+      try { payload = await r.json(); } catch(_) {}
+      throw new Error((payload && (payload.message || payload.error)) || '下载失败');
+    }
+    const blob = await r.blob();
+    const match = /filename\*=UTF-8''([^;]+)|filename="?([^"]+)"?/i.exec(r.headers.get('Content-Disposition') || '');
+    const filename = decodeURIComponent((match && (match[1] || match[2])) || 'avatar.png');
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = filename; a.click();
+    URL.revokeObjectURL(url);
+  } catch(e) {
+    showToast('头像下载失败：' + e.message, 'error');
+  }
 }
 
 function copyText(text, el){
@@ -1189,7 +1212,7 @@ function renderBody(){
             '</div></td>';
         }
         const v = r[c.key];
-        const display = c.type === 'avatar' ? avatarHtml(v, false) :
+        const display = c.type === 'avatar' ? avatarHtml(v, false, r.id) :
           ((v == null || v === '') ? '<span class="muted">—</span>' :
           (c.type === 'status')
             ? (locked ? `<span class="tag tag-status-已结算">已结算</span>` : `<select class="inline-status" onclick="event.stopPropagation()" onchange="quickUpdateStatus('${esc(r.id)}',this.value,this)">${STATUS_LIST.map(s => `<option value="${esc(s)}" ${s===v?'selected':''}>${esc(s)}</option>`).join('')}</select>`)
@@ -1230,7 +1253,7 @@ function openAdd(){
     }
     else if (f.type === 'date') input = `<input type="date" id="f_${c.key}">`;
     else if (f.type === 'textarea') input = `<textarea id="f_${c.key}"></textarea>`;
-    else if (c.key === 'avatarUrl') input = `<input type="text" id="f_${c.key}" placeholder="https://..." oninput="updateAvatarPreview(this.value)"><div class="avatar-preview" id="avatarPreviewBox">${avatarHtml('', true)}</div>`;
+    else if (c.key === 'avatarUrl') input = `<div class="avatar-preview" id="avatarPreviewBox">${avatarHtml('', true)}</div>`;
     else if (c.key === 'email') input = `<input type="text" id="f_${c.key}" list="unusedEmailList" placeholder="输入或选择未使用邮箱">`;
     else input = `<input type="text" id="f_${c.key}">`;
     return `<div class="form-item${fullWidth}"><label>${c.label}</label>${input}</div>`;
@@ -1255,7 +1278,7 @@ function openEdit(id){
     if (f.type === 'select') input = `<select id="f_${c.key}">${options.map(o => `<option value="${esc(o)}" ${o===val?'selected':''}>${esc(o)||'(空)'}</option>`).join('')}</select>`;
     else if (f.type === 'date') { const dv = val ? val.split(' ')[0] : ''; input = `<input type="date" id="f_${c.key}" value="${esc(dv)}">`; }
     else if (f.type === 'textarea') input = `<textarea id="f_${c.key}">${esc(val)}</textarea>`;
-    else if (c.key === 'avatarUrl') input = `<input type="text" id="f_${c.key}" value="${esc(val)}" placeholder="https://..." oninput="updateAvatarPreview(this.value)"><div class="avatar-preview" id="avatarPreviewBox">${avatarHtml(val, true)}</div>`;
+    else if (c.key === 'avatarUrl') input = `<div class="avatar-preview" id="avatarPreviewBox">${avatarHtml(val, true, id)}</div>`;
     else if (c.key === 'email') input = `<div style="display:flex;gap:6px;"><input style="flex:1;" type="text" id="f_${c.key}" list="unusedEmailList" value="${esc(val)}" placeholder="输入或选择未使用邮箱"><button type="button" class="btn ghost sm" onclick="refreshProgramEmail(this)">刷新换邮箱</button></div>`;
     else input = `<input type="text" id="f_${c.key}" value="${esc(val)}">`;
     return `<div class="form-item${fullWidth}"><label>${c.label}</label>${input}</div>`;
@@ -1419,7 +1442,10 @@ async function prepareNameImport(event){
       '公司':'companyName','公司简称':'companyName','主体':'companyName',
       '头像':'avatarUrl','头像url':'avatarUrl','小程序头像':'avatarUrl',
       'appid':'appid','小程序appid':'appid','原始id':'originalId',
-      '简介':'description','类目':'category','管理员':'admin','状态':'status',
+      '简介':'description','类目':'category','管理员':'admin',
+      '法人手机号':'legalPersonPhone','法人电话':'legalPersonPhone','法人手机':'legalPersonPhone',
+      '小程序手机号':'miniProgramPhone','小程序电话':'miniProgramPhone','小程序手机':'miniProgramPhone',
+      '状态':'status',
       '邮箱':'email','密钥':'secret','secret':'secret','小程序密码':'miniProgramPassword',
       '提交时间':'submitDate','提交日期':'submitDate'
     };

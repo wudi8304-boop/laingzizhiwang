@@ -166,8 +166,9 @@ def migrate(db=None, repo_root=None, data_dir=None, force=False):
                 stamp = now()
                 conn.execute(
                     """INSERT INTO programs(id,company_id,company_name,mini_program_name,avatar_url,description,category,
-                    appid,original_id,secret,admin,status,email,mini_program_password,submit_date,task_reason,
-                    external_id,source,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                    appid,original_id,secret,admin,legal_person_phone,mini_program_phone,status,email,
+                    mini_program_password,submit_date,task_reason,external_id,source,created_at,updated_at)
+                    VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
                     [pid, company_id] + vals + ["migration", stamp, stamp],
                 )
 

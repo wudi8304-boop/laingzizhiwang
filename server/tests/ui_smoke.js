@@ -57,6 +57,8 @@ const { chromium } = require("playwright");
     await page.waitForSelector("#page-data.active", { timeout: 10000 });
     const headers = await page.locator("#thead th").allInnerTexts();
     if (!headers.some(text => text.includes("头像"))) throw new Error("avatar column missing");
+    if (!headers.some(text => text.includes("法人手机号"))) throw new Error("legal phone column missing");
+    if (!headers.some(text => text.includes("小程序手机号"))) throw new Error("program phone column missing");
     if (headers.some(text => text.includes("小程序密码"))) throw new Error("password column should be hidden");
     const lockedStatus = page.locator("#tbody .tag-status-已结算").first();
     if (await lockedStatus.count()) {
@@ -82,7 +84,13 @@ const { chromium } = require("playwright");
     const avatarImages = await page.locator("#tbody img.avatar-thumb").count();
     await page.locator("#tbody button", { hasText: "编辑" }).first().click();
     await page.waitForSelector("#editModal.show", { timeout: 10000 });
-    for (const selector of ["#f_avatarUrl", "#f_miniProgramPassword", "#f_description", "#f_category"]) {
+    if (await page.locator("#f_avatarUrl").count()) {
+      throw new Error("avatar url input should be hidden");
+    }
+    if (!await page.locator("#avatarPreviewBox").count()) {
+      throw new Error("avatar preview missing");
+    }
+    for (const selector of ["#f_legalPersonPhone", "#f_miniProgramPhone", "#f_miniProgramPassword", "#f_description", "#f_category"]) {
       if (!await page.locator(selector).count()) throw new Error("edit field missing: " + selector);
     }
     if (!await page.locator("#editModal button", { hasText: "刷新换邮箱" }).count()) {

@@ -15,7 +15,9 @@ STATUS_ALIASES = {
 FIELDS = {
     "companyName": "company_name", "miniProgramName": "mini_program_name",
     "avatarUrl": "avatar_url", "description": "description", "category": "category", "appid": "appid",
-    "originalId": "original_id", "secret": "secret", "admin": "admin", "status": "status",
+    "originalId": "original_id", "secret": "secret", "admin": "admin",
+    "legalPersonPhone": "legal_person_phone", "miniProgramPhone": "mini_program_phone",
+    "status": "status",
     "email": "email", "miniProgramPassword": "mini_program_password", "submitDate": "submit_date",
     "taskReason": "task_reason", "externalId": "external_id",
 }
@@ -91,8 +93,11 @@ class ProgramService:
             where.append(scope)
             args.extend(scope_args)
         if search:
-            where.append("(mini_program_name LIKE ? OR company_name LIKE ? OR appid LIKE ? OR email LIKE ?)")
-            args.extend(["%%%s%%" % search] * 4)
+            where.append(
+                "(mini_program_name LIKE ? OR company_name LIKE ? OR appid LIKE ? OR email LIKE ?"
+                " OR legal_person_phone LIKE ? OR mini_program_phone LIKE ?)"
+            )
+            args.extend(["%%%s%%" % search] * 6)
         if company:
             where.append("company_name=?"); args.append(company)
         if status:
@@ -130,9 +135,9 @@ class ProgramService:
             self._assert_email_available(conn, str(data.get("email") or ""), program_id)
             conn.execute(
                 """INSERT INTO programs(id,company_id,company_name,mini_program_name,avatar_url,description,category,
-                   appid,original_id,secret,admin,status,email,mini_program_password,submit_date,task_reason,external_id,
-                   completed_at,settled_at,source,created_at,updated_at)
-                   VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                   appid,original_id,secret,admin,legal_person_phone,mini_program_phone,status,email,
+                   mini_program_password,submit_date,task_reason,external_id,completed_at,settled_at,source,created_at,updated_at)
+                   VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
                 [program_id, company_id] + values + [completed_at, settled_at, actor, stamp, stamp],
             )
             self._ensure_email(conn, str(data.get("email") or ""))

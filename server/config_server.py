@@ -10,6 +10,7 @@ import subprocess
 import sys
 import time
 import urllib.parse
+import urllib.request
 from http.cookies import SimpleCookie
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from socketserver import ThreadingMixIn
@@ -236,6 +237,49 @@ def save_approved(db, data):
             )
 
 
+AVATAR_TYPES = {
+    "image/png": ".png", "image/jpeg": ".jpg", "image/jpg": ".jpg",
+    "image/webp": ".webp", "image/gif": ".gif",
+}
+
+
+def fetch_program_avatar(program):
+    url = str(program.get("avatarUrl") or "").strip()
+    if not url.lower().startswith(("http://", "https://")):
+        raise ValueError("没有可下载的头像")
+    request = urllib.request.Request(
+        url, headers={"User-Agent": "laingzizhiwang-avatar/1.0"},
+    )
+    with urllib.request.urlopen(request, timeout=20) as response:
+        chunks, total = [], 0
+        while True:
+            chunk = response.read(65536)
+            if not chunk:
+                break
+            total += len(chunk)
+            if total > 5 * 1024 * 1024:
+                raise ValueError("头像文件过大，无法下载")
+            chunks.append(chunk)
+        content_type = (response.headers.get("Content-Type") or "").split(";")[0].strip().lower()
+    body = b"".join(chunks)
+    if not body:
+        raise ValueError("头像内容为空")
+    ext = AVATAR_TYPES.get(content_type)
+    if not ext:
+        path = urllib.parse.urlparse(url).path
+        ext = os.path.splitext(path)[1].lower() if path else ""
+        if ext not in (".png", ".jpg", ".jpeg", ".webp", ".gif"):
+            ext = ".png"
+        content_type = content_type or "application/octet-stream"
+    name = str(program.get("miniProgramName") or "avatar").strip() or "avatar"
+    return {
+        "_file": True,
+        "body": body,
+        "contentType": content_type or "image/png",
+        "filename": name + ext,
+    }
+
+
 class Handler(BaseHTTPRequestHandler):
     db = DB
     current_user = None
@@ -251,6 +295,19 @@ class Handler(BaseHTTPRequestHandler):
         for key, value in getattr(self, "_extra_headers", []):
             self.send_header(key, value)
         self._extra_headers = []
+        self.end_headers()
+        self.wfile.write(body)
+
+    def _send_file(self, payload):
+        body = payload["body"]
+        filename = payload.get("filename") or "avatar"
+        self.send_response(200)
+        self.send_header("Content-Type", payload.get("contentType") or "application/octet-stream")
+        self.send_header("Content-Length", str(len(body)))
+        self.send_header(
+            "Content-Disposition",
+            "attachment; filename*=UTF-8''%s" % urllib.parse.quote(filename),
+        )
         self.end_headers()
         self.wfile.write(body)
 
@@ -341,6 +398,9 @@ class Handler(BaseHTTPRequestHandler):
             result, code = self._dispatch(method, path, query, data), 200
             if method == "POST" and path == "/api/programs":
                 code = 201
+            if isinstance(result, dict) and result.get("_file"):
+                self._send_file(result)
+                return
             if isinstance(result, dict) and "data" in result:
                 response = result
             elif method == "GET":
@@ -542,6 +602,12 @@ class Handler(BaseHTTPRequestHandler):
             if value is None:
                 raise KeyError("program")
             return value
+        if path.startswith("/api/programs/") and path.endswith("/avatar") and method == "GET":
+            pid = urllib.parse.unquote(path.split("/")[3])
+            value = programs.get(pid)
+            if value is None:
+                raise KeyError("program")
+            return fetch_program_avatar(value)
         if path.startswith("/api/programs/"):
             pid = urllib.parse.unquote(path.split("/", 3)[3])
             if method == "GET":

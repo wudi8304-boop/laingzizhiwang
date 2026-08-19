@@ -16,7 +16,7 @@ SERVER_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, SERVER_DIR)
 
 from db import Database, now
-from config_server import Handler, ThreadingHTTPServer
+from config_server import Handler, ThreadingHTTPServer, fetch_program_avatar
 from migrate_data import migrate
 from services.account import AccountService
 from services.auth import AuthService, verify_password
@@ -56,10 +56,16 @@ class BackendTest(unittest.TestCase):
         created = service.create({
             "id": "p1", "companyName": "甲", "miniProgramName": "程序A",
             "description": "简介", "category": "工具", "email": "a@example.com",
+            "legalPersonPhone": "13800000001", "miniProgramPhone": "13900000002",
         })
         self.assertEqual("程序A", created["miniProgramName"])
         self.assertEqual("简介", created["description"])
         self.assertEqual("待注册", created["status"])
+        self.assertEqual("13800000001", created["legalPersonPhone"])
+        self.assertEqual("13900000002", created["miniProgramPhone"])
+        updated = service.update("p1", {"legalPersonPhone": "13700000003"})
+        self.assertEqual("13700000003", updated["legalPersonPhone"])
+        self.assertEqual("13900000002", updated["miniProgramPhone"])
         self.assertEqual("备案中", service.update("p1", {"status": "审核中"})["status"])
         service.update("p1", {"email": "b@example.com"})
         with self.db.connect() as conn:
@@ -73,6 +79,34 @@ class BackendTest(unittest.TestCase):
         self.assertEqual(2, service.list()["total"])
         self.assertTrue(service.delete("p2"))
         self.assertIsNone(service.get("p2"))
+
+    def test_avatar_download_uses_stored_url_only(self):
+        class FakeResponse:
+            def __init__(self):
+                self.headers = {"Content-Type": "image/png"}
+                self._sent = False
+
+            def read(self, _size=-1):
+                if self._sent:
+                    return b""
+                self._sent = True
+                return b"\x89PNG"
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *_args):
+                return False
+
+        with patch("config_server.urllib.request.urlopen", return_value=FakeResponse()) as opener:
+            result = fetch_program_avatar({
+                "miniProgramName": "程序A", "avatarUrl": "https://example.com/a.png",
+            })
+        self.assertEqual("https://example.com/a.png", opener.call_args[0][0].full_url)
+        self.assertEqual(b"\x89PNG", result["body"])
+        self.assertEqual("程序A.png", result["filename"])
+        with self.assertRaisesRegex(ValueError, "没有可下载的头像"):
+            fetch_program_avatar({"avatarUrl": "javascript:alert(1)"})
 
     def test_legacy_program_status_is_remapped(self):
         stamp = now()
@@ -120,7 +154,7 @@ class BackendTest(unittest.TestCase):
         legacy.initialize()
         with legacy.connect() as upgraded:
             columns = {row["name"] for row in upgraded.execute("PRAGMA table_info(programs)")}
-            self.assertTrue({"completed_at", "settled_at"} <= columns)
+            self.assertTrue({"completed_at", "settled_at", "legal_person_phone", "mini_program_phone"} <= columns)
             email_columns = {
                 row["name"] for row in upgraded.execute("PRAGMA table_info(emails)")
             }

@@ -33,7 +33,8 @@ CREATE TABLE IF NOT EXISTS programs (
  company_name TEXT NOT NULL DEFAULT '', mini_program_name TEXT NOT NULL DEFAULT '',
  avatar_url TEXT NOT NULL DEFAULT '', description TEXT NOT NULL DEFAULT '', category TEXT NOT NULL DEFAULT '',
  appid TEXT NOT NULL DEFAULT '', original_id TEXT NOT NULL DEFAULT '', secret TEXT NOT NULL DEFAULT '',
- admin TEXT NOT NULL DEFAULT '', status TEXT NOT NULL DEFAULT '待注册', email TEXT NOT NULL DEFAULT '',
+ admin TEXT NOT NULL DEFAULT '', legal_person_phone TEXT NOT NULL DEFAULT '',
+ mini_program_phone TEXT NOT NULL DEFAULT '', status TEXT NOT NULL DEFAULT '待注册', email TEXT NOT NULL DEFAULT '',
  completed_at TEXT NOT NULL DEFAULT '', settled_at TEXT NOT NULL DEFAULT '',
  mini_program_password TEXT NOT NULL DEFAULT '', submit_date TEXT NOT NULL DEFAULT '',
  task_reason TEXT NOT NULL DEFAULT '', external_id TEXT NOT NULL DEFAULT '',
@@ -139,7 +140,7 @@ class Database:
             existing = {row["name"] for row in conn.execute("PRAGMA table_info(programs)")}
             for name in (
                 "avatar_url", "description", "category", "completed_at", "settled_at",
-                "task_reason", "external_id",
+                "task_reason", "external_id", "legal_person_phone", "mini_program_phone",
             ):
                 if name not in existing:
                     conn.execute("ALTER TABLE programs ADD COLUMN %s TEXT NOT NULL DEFAULT ''" % name)
