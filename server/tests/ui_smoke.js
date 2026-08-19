@@ -26,9 +26,10 @@ const { chromium } = require("playwright");
       const stamp = (date, day) =>
         `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(day).padStart(2, "0")} 09:00:00`;
       renderMonthlyStats([
-        { completionTime: stamp(previous, 5), settlementTime: stamp(previous, 4) },
-        { completionTime: stamp(previous, 6), settlementTime: stamp(now, 1) },
-        { completionTime: stamp(now, 2), settlementTime: "" },
+        { status: "备案完成", completionTime: stamp(previous, 5), settlementTime: stamp(previous, 4) },
+        { status: "已结算", completionTime: stamp(previous, 6), settlementTime: stamp(now, 1) },
+        { status: "备案完成", completionTime: stamp(now, 2), settlementTime: "" },
+        { status: "备案中", completionTime: stamp(now, 3), settlementTime: "" },
       ], now);
       const values = Array.from(document.querySelectorAll("#monthlyStats .num")).map(el => el.textContent);
       renderDashboard();

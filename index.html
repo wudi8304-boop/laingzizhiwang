@@ -1719,13 +1719,18 @@ function renderMonthlyStats(all, now){
   const previousMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
   const previousLabel = `${previousMonth.getFullYear()}年${previousMonth.getMonth() + 1}月`;
   const currentLabel = `${now.getFullYear()}年${now.getMonth() + 1}月`;
-  const lastCompleted = all.filter(r => isSameMonth(r.completionTime, previousMonth));
+  const completedStatuses = new Set(['备案完成', '已结算']);
+  const lastCompleted = all.filter(r =>
+    completedStatuses.has(r.status) && isSameMonth(r.completionTime, previousMonth)
+  );
   const lastSettled = lastCompleted.filter(r => {
     const completed = String(r.completionTime || '').trim();
     const settled = String(r.settlementTime || '').trim();
-    return settled && settled >= completed;
+    return r.status === '已结算' && settled && settled >= completed;
   });
-  const currentCompleted = all.filter(r => isSameMonth(r.completionTime, now));
+  const currentCompleted = all.filter(r =>
+    completedStatuses.has(r.status) && isSameMonth(r.completionTime, now)
+  );
   _monthlyMetricLists = { lastCompleted, lastSettled, currentCompleted };
   const pending = Math.max(0, lastCompleted.length - lastSettled.length);
   document.getElementById('monthlyStats').innerHTML = [
