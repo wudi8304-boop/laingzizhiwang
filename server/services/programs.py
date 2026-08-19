@@ -168,6 +168,9 @@ class ProgramService:
             if target_status == "备案完成" and current.get("status") != "备案完成":
                 updates.append("completed_at=?")
                 args.append(stamp)
+            elif "status" in data and target_status not in ("备案完成", "已结算"):
+                updates.append("completed_at=?")
+                args.append("")
             if target_status == "已结算" and current.get("status") != "已结算":
                 updates.append("settled_at=?")
                 args.append(stamp)

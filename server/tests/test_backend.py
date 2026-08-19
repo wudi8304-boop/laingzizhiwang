@@ -143,7 +143,8 @@ class BackendTest(unittest.TestCase):
             unchanged = service.update("p1", {"status": "备案完成", "description": "补充"})
         self.assertEqual("2026-07-01 09:00:00", unchanged["completionTime"])
 
-        service.update("p1", {"status": "待审核"})
+        reviewing = service.update("p1", {"status": "待审核"})
+        self.assertEqual("", reviewing["completionTime"])
         with patch("services.programs.now", return_value="2026-07-03 09:00:00"):
             recompleted = service.update("p1", {"status": "备案完成"})
         self.assertEqual("2026-07-03 09:00:00", recompleted["completionTime"])
