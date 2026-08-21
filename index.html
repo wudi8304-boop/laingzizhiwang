@@ -2088,7 +2088,20 @@ async function updateCompanyFullName(idx, fullName){ const cfg = getMonitorConfi
 async function setAllMonitor(enabled){ const cfg = getMonitorConfig(); cfg.companies.forEach(c => c.enabled = enabled); try { await setMonitorConfig(cfg); } catch(e) { showToast('监控状态保存失败：' + e.message, 'error'); return; } renderCompanyMonitorList(cfg.companies); updateMonitorStats(); showToast(enabled ? '已全部开启' : '已全部暂停', 'success'); }
 function updateMonitorStats(){ const cfg = getMonitorConfig(); const total = cfg.companies.length; const running = cfg.companies.filter(c => c.enabled).length; document.getElementById('totalCompanies').textContent = total; document.getElementById('runningCompanies').textContent = running; document.getElementById('pausedCompanies').textContent = total - running; }
 async function addCompany(){ const cfg = getMonitorConfig(); cfg.companies.push({ name: '', fullName: '', enabled: true, lastCount: null, lastCheck: '', hasNew: false }); try { await setMonitorConfig(cfg); } catch(e) { showToast('新增公司失败：' + e.message, 'error'); return; } renderCompanyMonitorList(cfg.companies); updateMonitorStats(); }
-async function removeCompany(idx){ if (!confirm('确认删除该公司？')) return; const cfg = getMonitorConfig(); cfg.companies.splice(idx, 1); try { await setMonitorConfig(cfg); } catch(e) { showToast('删除公司失败：' + e.message, 'error'); return; } renderCompanyMonitorList(cfg.companies); updateMonitorStats(); }
+async function removeCompany(idx){
+  if (!confirm('确认从监控列表删除该公司？公司列表中的小程序记录不会删除。')) return;
+  const cfg = getMonitorConfig();
+  cfg.companies.splice(idx, 1);
+  try {
+    await setMonitorConfig(cfg);
+    renderCompanyMonitorList(getMonitorConfig().companies || []);
+    updateMonitorStats();
+    showToast('已从监控列表删除', 'success');
+  } catch(e) {
+    showToast('删除公司失败：' + e.message, 'error');
+    loadMonitorConfigToForm();
+  }
+}
 
 // 统一成 HH:MM，避免 <input type="time"> 在部分浏览器返回 HH:MM:SS 导致与 cron 对不上
 function normalizeTimeHM(t){

@@ -81,7 +81,10 @@ def _company_id(value):
 
 def monitor_config(db):
     with db.connect() as conn:
-        companies = [company_monitor_item(r) for r in conn.execute("SELECT * FROM companies ORDER BY id")]
+        companies = [
+            company_monitor_item(r)
+            for r in conn.execute("SELECT * FROM companies WHERE monitor_listed=1 ORDER BY id")
+        ]
     return {
         "companies": companies,
         "times": db.get_setting("monitor_times", []),
@@ -131,8 +134,8 @@ def save_monitor(db, data):
                 raise ValueError("公司简称“%s”已被占用" % name)
             if current:
                 conn.execute(
-                    """UPDATE companies SET name=?,full_name=?,enabled=?,last_check=COALESCE(?,last_check),
-                       last_count=?,has_new=?,updated_at=? WHERE id=?""",
+                    """UPDATE companies SET name=?,full_name=?,enabled=?,monitor_listed=1,
+                       last_check=COALESCE(?,last_check),last_count=?,has_new=?,updated_at=? WHERE id=?""",
                     (name, full_name, enabled, last_check, last_count, has_new, stamp, current["id"]),
                 )
                 if str(current["name"] or "").strip() != name:
@@ -143,9 +146,9 @@ def save_monitor(db, data):
                 company_id = current["id"]
             else:
                 cur = conn.execute(
-                    """INSERT INTO companies(name,full_name,enabled,last_check,last_count,has_new,created_at,updated_at)
-                       VALUES(?,?,?,?,?,?,?,?)""",
-                    (name, full_name, enabled, last_check, last_count, has_new, stamp, stamp),
+                    """INSERT INTO companies(name,full_name,enabled,monitor_listed,last_check,last_count,has_new,created_at,updated_at)
+                       VALUES(?,?,?,?,?,?,?,?,?)""",
+                    (name, full_name, enabled, 1, last_check, last_count, has_new, stamp, stamp),
                 )
                 company_id = cur.lastrowid
             kept_ids.append(company_id)
@@ -155,11 +158,11 @@ def save_monitor(db, data):
         if kept_ids:
             placeholders = ",".join("?" for _ in kept_ids)
             conn.execute(
-                "UPDATE companies SET enabled=0,updated_at=? WHERE id NOT IN (%s)" % placeholders,
+                "UPDATE companies SET monitor_listed=0,enabled=0,updated_at=? WHERE id NOT IN (%s)" % placeholders,
                 [now()] + kept_ids,
             )
         else:
-            conn.execute("UPDATE companies SET enabled=0,updated_at=?", (now(),))
+            conn.execute("UPDATE companies SET monitor_listed=0,enabled=0,updated_at=?", (now(),))
         db.audit("update", "monitor_config", "", {"companyCount": len(saved)}, "api", conn)
     return {"ok": True, "companies": saved}
 

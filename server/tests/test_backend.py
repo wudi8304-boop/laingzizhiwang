@@ -16,7 +16,7 @@ SERVER_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, SERVER_DIR)
 
 from db import Database, now
-from config_server import Handler, ThreadingHTTPServer, fetch_program_avatar, save_monitor
+from config_server import Handler, ThreadingHTTPServer, fetch_program_avatar, monitor_config, save_monitor
 from migrate_data import migrate
 from services.account import AccountService
 from services.auth import AuthService, verify_password
@@ -147,6 +147,36 @@ class BackendTest(unittest.TestCase):
                     {"name": "康希乐科技", "enabled": True},
                 ],
             })
+
+    def test_monitor_delete_removes_company_from_monitor_list_only(self):
+        service = ProgramService(self.db)
+        service.create({"id": "p1", "companyName": "甲", "miniProgramName": "程序A"})
+        service.create({"id": "p2", "companyName": "乙", "miniProgramName": "程序B"})
+        with self.db.connect() as conn:
+            company_a = conn.execute("SELECT id FROM companies WHERE name='甲'").fetchone()["id"]
+            company_b = conn.execute("SELECT id FROM companies WHERE name='乙'").fetchone()["id"]
+        saved = save_monitor(self.db, {
+            "companies": [{"id": company_a, "name": "甲", "enabled": True}],
+        })
+        self.assertEqual(["甲"], [row["name"] for row in saved["companies"]])
+        self.assertEqual(["甲"], [row["name"] for row in monitor_config(self.db)["companies"]])
+        with self.db.connect() as conn:
+            listed = conn.execute(
+                "SELECT name,monitor_listed,enabled FROM companies ORDER BY name"
+            ).fetchall()
+        self.assertEqual(
+            [("乙", 0, 0), ("甲", 1, 1)],
+            [(row["name"], row["monitor_listed"], row["enabled"]) for row in listed],
+        )
+        self.assertEqual("程序B", service.get("p2")["miniProgramName"])
+        restored = save_monitor(self.db, {
+            "companies": [
+                {"id": company_a, "name": "甲", "enabled": True},
+                {"id": company_b, "name": "乙", "enabled": False},
+            ],
+        })
+        self.assertEqual(["甲", "乙"], [row["name"] for row in restored["companies"]])
+        self.assertFalse([row for row in restored["companies"] if row["name"] == "乙"][0]["enabled"])
 
     def test_legacy_program_status_is_remapped(self):
         stamp = now()

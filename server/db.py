@@ -24,7 +24,8 @@ CREATE TABLE IF NOT EXISTS admin_users (
 );
 CREATE TABLE IF NOT EXISTS companies (
  id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL UNIQUE, full_name TEXT NOT NULL DEFAULT '',
- enabled INTEGER NOT NULL DEFAULT 1, last_check TEXT, last_count INTEGER NOT NULL DEFAULT 0,
+ enabled INTEGER NOT NULL DEFAULT 1, monitor_listed INTEGER NOT NULL DEFAULT 1,
+ last_check TEXT, last_count INTEGER NOT NULL DEFAULT 0,
  has_new INTEGER NOT NULL DEFAULT 0, assigned_admin_id INTEGER REFERENCES admin_users(id) ON DELETE SET NULL,
  created_at TEXT NOT NULL, updated_at TEXT NOT NULL
 );
@@ -161,10 +162,13 @@ class Database:
             company_columns = {row["name"] for row in conn.execute("PRAGMA table_info(companies)")}
             if "assigned_admin_id" not in company_columns:
                 conn.execute("ALTER TABLE companies ADD COLUMN assigned_admin_id INTEGER")
+            if "monitor_listed" not in company_columns:
+                conn.execute("ALTER TABLE companies ADD COLUMN monitor_listed INTEGER NOT NULL DEFAULT 1")
             conn.execute(
                 "CREATE INDEX IF NOT EXISTS idx_companies_assigned_admin "
                 "ON companies(assigned_admin_id)"
             )
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_companies_monitor_listed ON companies(monitor_listed)")
             conn.executemany(
                 "UPDATE programs SET status=? WHERE status=?",
                 [
