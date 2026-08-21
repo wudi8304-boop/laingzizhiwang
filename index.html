@@ -1973,7 +1973,11 @@ async function setMonitorConfig(cfg){
   const save = _monitorSaveQueue.then(() => apiPost('/api/monitor', snapshot));
   _monitorSaveQueue = save.catch(() => {});
   try {
-    await save;
+    const saved = await save;
+    if (version === _monitorSaveVersion && saved && Array.isArray(saved.companies)) {
+      snapshot.companies = saved.companies;
+      _monitorCache = snapshot;
+    }
   } catch(e) {
     if (version === _monitorSaveVersion) _monitorCache = previous;
     throw e;
@@ -2068,7 +2072,18 @@ async function toggleCompanyMonitor(idx, enabled){
   showToast(enabled ? '已开启监控' : '已暂停监控', 'success');
 }
 
-async function updateCompanyName(idx, name){ const cfg = getMonitorConfig(); if (cfg.companies[idx]) { cfg.companies[idx].name = name.trim(); try { await setMonitorConfig(cfg); } catch(e) { showToast('公司简称保存失败：' + e.message, 'error'); } } }
+async function updateCompanyName(idx, name){
+  const cfg = getMonitorConfig();
+  if (!cfg.companies[idx]) return;
+  cfg.companies[idx].name = name.trim();
+  try {
+    await setMonitorConfig(cfg);
+    renderCompanyMonitorList(getMonitorConfig().companies || []);
+  } catch(e) {
+    showToast('公司简称保存失败：' + e.message, 'error');
+    loadMonitorConfigToForm();
+  }
+}
 async function updateCompanyFullName(idx, fullName){ const cfg = getMonitorConfig(); if (cfg.companies[idx]) { cfg.companies[idx].fullName = fullName.trim(); try { await setMonitorConfig(cfg); } catch(e) { showToast('公司全称保存失败：' + e.message, 'error'); } } }
 async function setAllMonitor(enabled){ const cfg = getMonitorConfig(); cfg.companies.forEach(c => c.enabled = enabled); try { await setMonitorConfig(cfg); } catch(e) { showToast('监控状态保存失败：' + e.message, 'error'); return; } renderCompanyMonitorList(cfg.companies); updateMonitorStats(); showToast(enabled ? '已全部开启' : '已全部暂停', 'success'); }
 function updateMonitorStats(){ const cfg = getMonitorConfig(); const total = cfg.companies.length; const running = cfg.companies.filter(c => c.enabled).length; document.getElementById('totalCompanies').textContent = total; document.getElementById('runningCompanies').textContent = running; document.getElementById('pausedCompanies').textContent = total - running; }
@@ -2124,6 +2139,7 @@ function collectMonitorConfigFromForm(){
     const fullName = inputs[1] ? inputs[1].value.trim() : '';
     const old = oldCompanies[i] || {};
     if (name) cfg.companies.push({
+      id: old.id || null,
       name: name, fullName: fullName,
       enabled: old.enabled != null ? old.enabled : true,
       lastCount: old.lastCount != null ? old.lastCount : null,

@@ -62,15 +62,26 @@ def log(message):
     print("[%s] %s" % (now(), message), flush=True)
 
 
+def company_monitor_item(row):
+    return {
+        "id": row["id"], "name": row["name"], "fullName": row["full_name"],
+        "enabled": bool(row["enabled"]), "lastCheck": row["last_check"] or "",
+        "lastCount": row["last_count"], "hasNew": bool(row["has_new"]),
+    }
+
+
+def _company_id(value):
+    if value in (None, ""):
+        return None
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return None
+
+
 def monitor_config(db):
     with db.connect() as conn:
-        companies = [
-            {
-                "name": r["name"], "fullName": r["full_name"], "enabled": bool(r["enabled"]),
-                "lastCheck": r["last_check"] or "", "lastCount": r["last_count"], "hasNew": bool(r["has_new"]),
-            }
-            for r in conn.execute("SELECT * FROM companies ORDER BY id")
-        ]
+        companies = [company_monitor_item(r) for r in conn.execute("SELECT * FROM companies ORDER BY id")]
     return {
         "companies": companies,
         "times": db.get_setting("monitor_times", []),
@@ -82,33 +93,75 @@ def monitor_config(db):
 def save_monitor(db, data):
     if not isinstance(data, dict):
         raise ValueError("data must be an object")
+    saved = []
     with db.transaction() as conn:
         for key in ("times", "apihz", "dingtalk"):
             if key in data:
                 db.set_setting("monitor_" + key, data[key], conn)
-        company_names = []
+        kept_ids = []
+        seen_names = set()
         for company in data.get("companies") or []:
-            if not isinstance(company, dict) or not str(company.get("name") or "").strip():
+            if not isinstance(company, dict):
                 continue
+            name = str(company.get("name") or "").strip()
+            if not name:
+                continue
+            normalized = name.casefold()
+            if normalized in seen_names:
+                raise ValueError("监控列表中存在重复的公司简称：%s" % name)
+            seen_names.add(normalized)
             stamp = now()
-            company_names.append(str(company["name"]).strip())
+            full_name = str(company.get("fullName") or "")
+            enabled = int(bool(company.get("enabled", True)))
+            last_check = company.get("lastCheck") or None
+            last_count = int(company.get("lastCount") or 0)
+            has_new = int(bool(company.get("hasNew")))
+            company_id = _company_id(company.get("id"))
+            current = None
+            if company_id:
+                current = conn.execute("SELECT * FROM companies WHERE id=?", (company_id,)).fetchone()
+            if not current:
+                current = conn.execute(
+                    "SELECT * FROM companies WHERE lower(trim(name))=lower(trim(?))", (name,)
+                ).fetchone()
+            owner = conn.execute(
+                "SELECT * FROM companies WHERE lower(trim(name))=lower(trim(?))", (name,)
+            ).fetchone()
+            if current and owner and owner["id"] != current["id"]:
+                raise ValueError("公司简称“%s”已被占用" % name)
+            if current:
+                conn.execute(
+                    """UPDATE companies SET name=?,full_name=?,enabled=?,last_check=COALESCE(?,last_check),
+                       last_count=?,has_new=?,updated_at=? WHERE id=?""",
+                    (name, full_name, enabled, last_check, last_count, has_new, stamp, current["id"]),
+                )
+                if str(current["name"] or "").strip() != name:
+                    conn.execute(
+                        "UPDATE programs SET company_name=?,updated_at=? WHERE company_id=?",
+                        (name, stamp, current["id"]),
+                    )
+                company_id = current["id"]
+            else:
+                cur = conn.execute(
+                    """INSERT INTO companies(name,full_name,enabled,last_check,last_count,has_new,created_at,updated_at)
+                       VALUES(?,?,?,?,?,?,?,?)""",
+                    (name, full_name, enabled, last_check, last_count, has_new, stamp, stamp),
+                )
+                company_id = cur.lastrowid
+            kept_ids.append(company_id)
+            saved.append(company_monitor_item(
+                conn.execute("SELECT * FROM companies WHERE id=?", (company_id,)).fetchone()
+            ))
+        if kept_ids:
+            placeholders = ",".join("?" for _ in kept_ids)
             conn.execute(
-                """INSERT INTO companies(name,full_name,enabled,last_check,last_count,has_new,created_at,updated_at)
-                   VALUES(?,?,?,?,?,?,?,?) ON CONFLICT(name) DO UPDATE SET full_name=excluded.full_name,
-                   enabled=excluded.enabled,updated_at=excluded.updated_at""",
-                (str(company["name"]).strip(), str(company.get("fullName") or ""), int(bool(company.get("enabled", True))),
-                 company.get("lastCheck"), int(company.get("lastCount") or 0), int(bool(company.get("hasNew"))),
-                 stamp, stamp),
-            )
-        if company_names:
-            placeholders = ",".join("?" for _ in company_names)
-            conn.execute(
-                "UPDATE companies SET enabled=0,updated_at=? WHERE name NOT IN (%s)" % placeholders,
-                [now()] + company_names,
+                "UPDATE companies SET enabled=0,updated_at=? WHERE id NOT IN (%s)" % placeholders,
+                [now()] + kept_ids,
             )
         else:
             conn.execute("UPDATE companies SET enabled=0,updated_at=?", (now(),))
-        db.audit("update", "monitor_config", "", {"companyCount": len(data.get("companies") or [])}, "api", conn)
+        db.audit("update", "monitor_config", "", {"companyCount": len(saved)}, "api", conn)
+    return {"ok": True, "companies": saved}
 
 
 def legacy_emails(db, principal=None):
@@ -577,7 +630,7 @@ class Handler(BaseHTTPRequestHandler):
             return {"ok": True}
         if path == "/api/monitor":
             if method == "GET": return monitor_config(self.db)
-            if method == "POST": save_monitor(self.db, data); return {"ok": True}
+            if method == "POST": return save_monitor(self.db, data)
         if path == "/api/monitor/run" and method == "POST":
             return MonitorService(self.db).run("manual")
         if path == "/api/monitor/runs" and method == "GET":

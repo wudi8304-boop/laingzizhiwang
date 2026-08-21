@@ -16,7 +16,7 @@ SERVER_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, SERVER_DIR)
 
 from db import Database, now
-from config_server import Handler, ThreadingHTTPServer, fetch_program_avatar
+from config_server import Handler, ThreadingHTTPServer, fetch_program_avatar, save_monitor
 from migrate_data import migrate
 from services.account import AccountService
 from services.auth import AuthService, verify_password
@@ -107,6 +107,46 @@ class BackendTest(unittest.TestCase):
         self.assertEqual("程序A.png", result["filename"])
         with self.assertRaisesRegex(ValueError, "没有可下载的头像"):
             fetch_program_avatar({"avatarUrl": "javascript:alert(1)"})
+
+    def test_monitor_rename_updates_existing_company_instead_of_creating(self):
+        service = ProgramService(self.db)
+        service.create({"id": "p1", "companyName": "内蒙古康希乐科技有限公司", "miniProgramName": "程序A"})
+        with self.db.connect() as conn:
+            company_id = conn.execute(
+                "SELECT id FROM companies WHERE name='内蒙古康希乐科技有限公司'"
+            ).fetchone()["id"]
+        saved = save_monitor(self.db, {
+            "companies": [{
+                "id": company_id, "name": "康希乐科技",
+                "fullName": "内蒙古康希乐科技有限公司", "enabled": True,
+            }],
+        })
+        self.assertEqual(1, len(saved["companies"]))
+        self.assertEqual(company_id, saved["companies"][0]["id"])
+        self.assertEqual("康希乐科技", saved["companies"][0]["name"])
+        self.assertEqual("康希乐科技", service.get("p1")["companyName"])
+        with self.db.connect() as conn:
+            self.assertEqual(1, conn.execute("SELECT COUNT(*) n FROM companies").fetchone()["n"])
+            self.assertEqual(0, conn.execute(
+                "SELECT COUNT(*) n FROM companies WHERE name='内蒙古康希乐科技有限公司'"
+            ).fetchone()["n"])
+        other = ProgramService(self.db).create({
+            "id": "p2", "companyName": "徽希科技", "miniProgramName": "程序B",
+        })
+        self.assertEqual("徽希科技", other["companyName"])
+        with self.assertRaisesRegex(ValueError, "已被占用"):
+            save_monitor(self.db, {
+                "companies": [
+                    {"id": company_id, "name": "徽希科技", "enabled": True},
+                ],
+            })
+        with self.assertRaisesRegex(ValueError, "重复"):
+            save_monitor(self.db, {
+                "companies": [
+                    {"id": company_id, "name": "康希乐科技", "enabled": True},
+                    {"name": "康希乐科技", "enabled": True},
+                ],
+            })
 
     def test_legacy_program_status_is_remapped(self):
         stamp = now()
