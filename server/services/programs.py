@@ -16,10 +16,10 @@ FIELDS = {
     "companyName": "company_name", "miniProgramName": "mini_program_name",
     "avatarUrl": "avatar_url", "description": "description", "category": "category", "appid": "appid",
     "originalId": "original_id", "secret": "secret", "admin": "admin",
-    "legalPersonPhone": "legal_person_phone", "miniProgramPhone": "mini_program_phone",
-    "status": "status",
+    "legalPersonName": "legal_person_name", "legalPersonPhone": "legal_person_phone",
+    "miniProgramPhone": "mini_program_phone", "status": "status",
     "email": "email", "miniProgramPassword": "mini_program_password", "submitDate": "submit_date",
-    "taskReason": "task_reason", "externalId": "external_id",
+    "taskReason": "task_reason", "rejectReason": "reject_reason", "externalId": "external_id",
 }
 
 
@@ -95,9 +95,10 @@ class ProgramService:
         if search:
             where.append(
                 "(mini_program_name LIKE ? OR company_name LIKE ? OR appid LIKE ? OR email LIKE ?"
-                " OR legal_person_phone LIKE ? OR mini_program_phone LIKE ?)"
+                " OR legal_person_name LIKE ? OR legal_person_phone LIKE ? OR mini_program_phone LIKE ?"
+                " OR reject_reason LIKE ?)"
             )
-            args.extend(["%%%s%%" % search] * 6)
+            args.extend(["%%%s%%" % search] * 8)
         if company:
             where.append("company_name=?"); args.append(company)
         if status:
@@ -120,27 +121,36 @@ class ProgramService:
         data = dict(data)
         data["status"] = normalize_status(data.get("status"))
         self._apply_business_rules(data)
+        self._normalize_reject_reason(data)
         actor = self._actor(actor)
         program_id = str(data.get("id") or ("rec_" + uuid.uuid4().hex[:12]))
         stamp = now()
         completed_at = stamp if data["status"] == "备案完成" else ""
         settled_at = stamp if data["status"] == "已结算" else ""
-        values = [str(data.get(k) or "") for k in FIELDS]
         with self.db.transaction() as conn:
             if conn.execute("SELECT 1 FROM programs WHERE id=?", (program_id,)).fetchone():
                 raise ValueError("program id already exists")
             company_name = str(data.get("companyName") or "")
             self._assert_company(conn, company_name)
             company_id = self._company_id(conn, company_name)
+            self._inherit_company_legal(conn, company_id, data)
             self._assert_email_available(conn, str(data.get("email") or ""), program_id)
+            values = [str(data.get(k) or "") for k in FIELDS]
+            columns = ["id", "company_id"] + list(FIELDS.values()) + [
+                "completed_at", "settled_at", "source", "created_at", "updated_at",
+            ]
             conn.execute(
-                """INSERT INTO programs(id,company_id,company_name,mini_program_name,avatar_url,description,category,
-                   appid,original_id,secret,admin,legal_person_phone,mini_program_phone,status,email,
-                   mini_program_password,submit_date,task_reason,external_id,completed_at,settled_at,source,created_at,updated_at)
-                   VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                "INSERT INTO programs(%s) VALUES(%s)" % (
+                    ",".join(columns), ",".join("?" * len(columns)),
+                ),
                 [program_id, company_id] + values + [completed_at, settled_at, actor, stamp, stamp],
             )
             self._ensure_email(conn, str(data.get("email") or ""))
+            self._propagate_company_legal(
+                conn, company_id,
+                data.get("legalPersonName") if "legalPersonName" in data else None,
+                data.get("legalPersonPhone") if "legalPersonPhone" in data else None,
+            )
             created = dict(data)
             created["id"] = program_id
             self.db.audit("create", "program", program_id, {"after": created}, actor, conn)
@@ -159,6 +169,7 @@ class ProgramService:
         actor = self._actor(actor)
         current = external(current_row)
         self._apply_business_rules(data, current)
+        self._normalize_reject_reason(data, current)
         updates, args = [], []
         stamp = now()
         for api, col in FIELDS.items():
@@ -179,14 +190,32 @@ class ProgramService:
             if target_status == "已结算" and current.get("status") != "已结算":
                 updates.append("settled_at=?")
                 args.append(stamp)
+            company_id = current_row["company_id"]
             if "companyName" in data:
                 self._assert_company(conn, str(data.get("companyName") or ""))
+                company_id = self._company_id(conn, str(data.get("companyName") or ""))
                 updates.append("company_id=?")
-                args.append(self._company_id(conn, str(data.get("companyName") or "")))
+                args.append(company_id)
+                if "legalPersonName" not in data or "legalPersonPhone" not in data:
+                    inherited = self._company_legal(conn, company_id)
+                    if inherited:
+                        if "legalPersonName" not in data:
+                            updates.append("legal_person_name=?")
+                            args.append(inherited["legal_person_name"] or "")
+                            data["legalPersonName"] = inherited["legal_person_name"] or ""
+                        if "legalPersonPhone" not in data:
+                            updates.append("legal_person_phone=?")
+                            args.append(inherited["legal_person_phone"] or "")
+                            data["legalPersonPhone"] = inherited["legal_person_phone"] or ""
             updates.append("updated_at=?"); args.append(stamp); args.append(program_id)
             conn.execute("UPDATE programs SET %s WHERE id=?" % ",".join(updates), args)
             if "email" in data:
                 self._ensure_email(conn, str(data.get("email") or ""))
+            self._propagate_company_legal(
+                conn, company_id,
+                self._changed_legal(data, current, "legalPersonName"),
+                self._changed_legal(data, current, "legalPersonPhone"),
+            )
             if data.get("taskReason") == "":
                 conn.execute(
                     """UPDATE exceptions SET status='resolved',resolved_at=?,updated_at=?
@@ -290,6 +319,77 @@ class ProgramService:
         required = ("miniProgramName", "appid", "admin", "email")
         if effective.get("taskReason") and all(str(effective.get(key) or "").strip() for key in required):
             data["taskReason"] = ""
+
+    @staticmethod
+    def _normalize_reject_reason(data, current=None):
+        current = current or {}
+        status = data.get("status", current.get("status", ""))
+        if status != "备案驳回":
+            if "status" in data or "rejectReason" in data:
+                data["rejectReason"] = ""
+            return
+        reason = str(data.get("rejectReason", current.get("rejectReason") or "")).strip()
+        if not reason:
+            raise ValueError("请填写备案驳回原因")
+        data["rejectReason"] = reason
+
+    @staticmethod
+    def _changed_legal(data, current, field):
+        if field not in data:
+            return None
+        incoming = str(data.get(field) or "").strip()
+        existing = str(current.get(field) or "").strip()
+        return incoming if incoming != existing else None
+
+    @staticmethod
+    def _company_legal(conn, company_id):
+        if not company_id:
+            return None
+        return conn.execute(
+            "SELECT legal_person_name,legal_person_phone FROM companies WHERE id=?",
+            (company_id,),
+        ).fetchone()
+
+    @staticmethod
+    def _inherit_company_legal(conn, company_id, data):
+        inherited = ProgramService._company_legal(conn, company_id)
+        if not inherited:
+            return
+        if not str(data.get("legalPersonName") or "").strip():
+            data["legalPersonName"] = inherited["legal_person_name"] or ""
+        if not str(data.get("legalPersonPhone") or "").strip():
+            data["legalPersonPhone"] = inherited["legal_person_phone"] or ""
+
+    @staticmethod
+    def _propagate_company_legal(conn, company_id, name, phone):
+        if not company_id or (name is None and phone is None):
+            return
+        stamp = now()
+        company_sets, company_args = [], []
+        program_sets, program_args = [], []
+        if name is not None:
+            value = str(name or "").strip()
+            company_sets.append("legal_person_name=?")
+            program_sets.append("legal_person_name=?")
+            company_args.append(value)
+            program_args.append(value)
+        if phone is not None:
+            value = str(phone or "").strip()
+            company_sets.append("legal_person_phone=?")
+            program_sets.append("legal_person_phone=?")
+            company_args.append(value)
+            program_args.append(value)
+        company_sets.append("updated_at=?")
+        company_args.extend([stamp, company_id])
+        conn.execute(
+            "UPDATE companies SET %s WHERE id=?" % ",".join(company_sets), company_args
+        )
+        program_sets.append("updated_at=?")
+        program_args.extend([stamp, company_id])
+        conn.execute(
+            "UPDATE programs SET %s WHERE company_id=? AND status<>'已结算'" % ",".join(program_sets),
+            program_args,
+        )
 
     @staticmethod
     def _company_id(conn, name):

@@ -251,6 +251,8 @@ def company_summaries(db, principal=None):
                 "id": company["id"], "name": company["name"], "fullName": company["full_name"],
                 "assignedAdminId": company["assigned_admin_id"],
                 "assignedAdminUsername": company["assigned_admin_username"] or "",
+                "legalPersonName": company["legal_person_name"] or "",
+                "legalPersonPhone": company["legal_person_phone"] or "",
                 "programCount": total, "completedCount": completed,
                 "progress": round(completed * 100.0 / total, 1) if total else 0,
                 "statusCounts": status_counts,
@@ -287,7 +289,7 @@ def save_approved(db, data):
             conn.execute(
                 """UPDATE programs SET
                    completed_at=CASE WHEN status NOT IN ('备案完成','已结算') THEN ? ELSE completed_at END,
-                   status='备案完成',updated_at=?
+                   status='备案完成',reject_reason='',updated_at=?
                    WHERE lower(trim(mini_program_name))=? AND status<>'已结算'""",
                 (stamp, stamp, name.casefold()),
             )

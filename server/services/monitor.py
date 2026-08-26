@@ -212,7 +212,7 @@ class MonitorService:
                 conn.execute(
                     """UPDATE programs SET
                        completed_at=CASE WHEN status NOT IN ('备案完成','已结算') THEN ? ELSE completed_at END,
-                       status='备案完成',updated_at=? WHERE id=? AND status<>'已结算'""",
+                       status='备案完成',reject_reason='',updated_at=? WHERE id=? AND status<>'已结算'""",
                     (stamp, stamp, row["id"]),
                 )
         else:
@@ -226,13 +226,20 @@ class MonitorService:
                    ORDER BY e.sort_order,e.id LIMIT 1"""
             ).fetchone()
             assigned_email = email_row["address"] if email_row else ""
+            legal = conn.execute(
+                "SELECT legal_person_name,legal_person_phone FROM companies WHERE id=?",
+                (company["id"],),
+            ).fetchone()
             cur = conn.execute(
                 """INSERT OR IGNORE INTO programs(
                    id,company_id,company_name,mini_program_name,status,email,task_reason,completed_at,
-                   source,created_at,updated_at
-                   ) VALUES(?,?,?,?,?,?,?,?,'monitor',?,?)""",
+                   legal_person_name,legal_person_phone,source,created_at,updated_at
+                   ) VALUES(?,?,?,?,?,?,?,?,?,?,'monitor',?,?)""",
                 (pid, company["id"], company["name"], item["name"], "备案完成", assigned_email,
-                 "待补资料", stamp, stamp, stamp),
+                 "待补资料", stamp,
+                 (legal["legal_person_name"] if legal else "") or "",
+                 (legal["legal_person_phone"] if legal else "") or "",
+                 stamp, stamp),
             )
             if cur.rowcount:
                 conn.execute(

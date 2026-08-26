@@ -102,8 +102,12 @@
   .tag-status-待注册 { background: #fef0f0; color: #f56c6c; border: 1px solid #fde2e2; }
   .tag-status-待审核 { background: #fdf6ec; color: #e6a23c; border: 1px solid #faecd8; }
   .tag-status-备案中 { background: #ecf5ff; color: #409eff; border: 1px solid #d9ecff; }
+  .tag-status-备案驳回 { background: #fdf2f8; color: #c41d7f; border: 1px solid #ffadd2; }
   .tag-status-备案完成 { background: #e6fffb; color: #13c2c2; border: 1px solid #87e8de; }
   .tag-status-已结算 { background: #f4f4f5; color: #909399; border: 1px solid #e9e9eb; }
+  .status-cell { display: flex; flex-direction: column; align-items: flex-start; gap: 4px; }
+  .reject-reason { max-width: 180px; font-size: 10px; color: #c41d7f; line-height: 1.4; word-break: break-all; }
+  .form-hint { font-size: 11px; color: var(--text-3); line-height: 1.4; }
 
   .copy-cell:hover { background: #ecf5ff !important; color: var(--primary); cursor: pointer; }
   .copy-cell { transition: background .15s; }
@@ -509,6 +513,23 @@
   </div>
 </div>
 
+<div class="modal-mask" id="rejectReasonModal">
+  <div class="modal" style="width:460px;">
+    <div class="modal-head"><h3>备案驳回</h3><span class="close" onclick="cancelRejectReason()">&times;</span></div>
+    <div class="modal-body">
+      <div class="help-tip" style="margin-bottom:10px;">选择「备案驳回」需要填写原因，保存后会显示在状态下方，方便后续改资料重提。</div>
+      <div class="form-item full">
+        <label>备案驳回原因</label>
+        <textarea id="rejectReasonInput" placeholder="例如：主体名称与营业执照不一致"></textarea>
+      </div>
+    </div>
+    <div class="modal-foot">
+      <button class="btn ghost sm" onclick="cancelRejectReason()">取消</button>
+      <button class="btn sm" onclick="confirmRejectReason()">确认</button>
+    </div>
+  </div>
+</div>
+
 
 <div class="modal-mask" id="emailModal">
   <div class="modal" style="width:450px;">
@@ -686,18 +707,19 @@ const COLS = [
   { key: 'originalId', label: '原始ID', type: 'copy', form: { type: 'text' } },
   { key: 'secret', label: '密钥', type: 'copy', form: { type: 'textarea' } },
   { key: 'admin', label: '管理员', sortable: true, form: { type: 'text' } },
+  { key: 'legalPersonName', label: '法人姓名', sortable: true, form: { type: 'text' } },
   { key: 'legalPersonPhone', label: '法人手机号', type: 'mono', sortable: true, form: { type: 'text' } },
   { key: 'miniProgramPhone', label: '小程序手机号', type: 'mono', sortable: true, form: { type: 'text' } },
-  { key: 'status', label: '状态', type: 'status', sortable: true, form: { type: 'select', options: ['待注册', '待审核', '备案中', '备案完成', '已结算'] } },
+  { key: 'status', label: '状态', type: 'status', sortable: true, form: { type: 'select', options: ['待注册', '待审核', '备案中', '备案驳回', '备案完成', '已结算'] } },
   { key: 'email', label: '邮箱', type: 'mono', form: { type: 'text' } },
   { key: 'miniProgramPassword', label: '小程序密码', type: 'copy', form: { type: 'text' }, tableShow: false },
   { key: 'submitDate', label: '提交时间', type: 'date', sortable: true, form: { type: 'date' }, formShow: false }
 ];
-const STATUS_LIST = ['待注册','待审核','备案中','备案完成','已结算'];
+const STATUS_LIST = ['待注册','待审核','备案中','备案驳回','备案完成','已结算'];
 const DEFAULT_STATUS = '待注册';
 const OP_COL = { key: '_op', label: '操作', type: 'op' };
-// 状态排序优先级：待注册 > 待审核 > 备案中 > 备案完成 > 已结算（需处理项靠前，已完成项靠后）
-const STATUS_ORDER = { '待注册': 0, '待审核': 1, '备案中': 2, '备案完成': 3, '已结算': 4 };
+// 状态排序优先级：待注册 > 待审核 > 备案驳回 > 备案中 > 备案完成 > 已结算
+const STATUS_ORDER = { '待注册': 0, '待审核': 1, '备案驳回': 2, '备案中': 3, '备案完成': 4, '已结算': 5 };
 function getStatusOrder(s){ return STATUS_ORDER[s] != null ? STATUS_ORDER[s] : 99; }
 
 let sortKey = null, sortDesc = false, page = 1, pageSize = 20, editingId = null;
@@ -833,8 +855,10 @@ function renderCompanyManagement(){
     const assignment = isSuper() ? `<select class="inline-status" onchange="assignCompany(${Number(company.id)},this.value)">
       <option value="">未分配</option>${activeAdmins.map(user => `<option value="${Number(user.id)}" ${Number(company.assignedAdminId)===Number(user.id)?'selected':''}>${esc(user.username)}</option>`).join('')}
     </select>` : `<span class="muted">负责人：${esc(company.assignedAdminUsername || (_sessionUser && _sessionUser.username) || '')}</span>`;
+    const legalText = [company.legalPersonName, company.legalPersonPhone].filter(Boolean).join(' · ');
     return `<div class="company-card">
       <div class="company-card-head"><div><strong>${esc(company.name)}</strong><div class="muted">${esc(company.fullName || '')}</div></div>${assignment}</div>
+      <div class="muted" style="margin-bottom:6px;">法人：${legalText ? esc(legalText) : '未填写（编辑任一小程序填写后会同步全公司）'}</div>
       <div><strong>${Number(company.programCount || 0)}</strong> 个小程序，完成 ${Number(company.completedCount || 0)} 个</div>
       <div class="progress-track"><div class="progress-value" style="width:${Math.max(0,Math.min(100,Number(company.progress||0)))}%"></div></div>
       <div class="muted">${statusText}</div>
@@ -1082,7 +1106,7 @@ function getFiltered(){
     if (fc && r.companyName !== fc) return false;
     if (fs && r.status !== fs) return false;
     if (q) {
-      const hay = [r.companyName,r.miniProgramName,r.appid,r.email,r.admin,r.originalId,r.status].filter(x=>x).join(' ').toLowerCase();
+      const hay = [r.companyName,r.miniProgramName,r.appid,r.email,r.admin,r.legalPersonName,r.legalPersonPhone,r.originalId,r.status,r.rejectReason].filter(x=>x).join(' ').toLowerCase();
       if (!hay.includes(q)) return false;
     }
     return true;
@@ -1213,10 +1237,9 @@ function renderBody(){
         }
         const v = r[c.key];
         const display = c.type === 'avatar' ? avatarHtml(v, false, r.id) :
-          ((v == null || v === '') ? '<span class="muted">—</span>' :
-          (c.type === 'status')
-            ? (locked ? `<span class="tag tag-status-已结算">已结算</span>` : `<select class="inline-status" onclick="event.stopPropagation()" onchange="quickUpdateStatus('${esc(r.id)}',this.value,this)">${STATUS_LIST.map(s => `<option value="${esc(s)}" ${s===v?'selected':''}>${esc(s)}</option>`).join('')}</select>`)
-            : esc(v));
+          ((c.type === 'status')
+            ? statusCellHtml(r, locked)
+            : ((v == null || v === '') ? '<span class="muted">—</span>' : esc(v)));
         const cellColIdx = colIdx - 1;
         return `<td class="cell" data-r="${rowIdx}" data-c="${cellColIdx}" data-key="${c.key}" onclick="cellClick(event,${rowIdx},${cellColIdx})">${display}</td>`;
       }).join('') + '</tr>';
@@ -1238,27 +1261,158 @@ function goPage(p){ page = p; renderBody(); }
 function resetFilters(){ document.getElementById('search').value = ''; document.getElementById('filterCompany').value = ''; document.getElementById('filterStatus').value = ''; sortKey = null; page = 1; render(); }
 function render(){ renderStats(); renderFilters(); renderHead(); renderBody(); }
 
+function statusCellHtml(r, locked){
+  const reason = (r.status === '备案驳回' && r.rejectReason)
+    ? `<div class="reject-reason" title="${esc(r.rejectReason)}">${esc(r.rejectReason)}</div>` : '';
+  if (locked) {
+    return `<div class="status-cell"><span class="tag tag-status-已结算">已结算</span></div>`;
+  }
+  return `<div class="status-cell"><select class="inline-status" onclick="event.stopPropagation()" onchange="quickUpdateStatus('${esc(r.id)}',this.value,this)">${STATUS_LIST.map(s => `<option value="${esc(s)}" ${s===r.status?'selected':''}>${esc(s)}</option>`).join('')}</select>${reason}</div>`;
+}
+
+function programFormItemHtml(c, val, record){
+  const f = c.form;
+  const fullWidth = (f.type === 'textarea') ? ' full' : '';
+  let input;
+  const options = c.key === 'companyName' ? getCompanyOptions() : f.options;
+  if (f.type === 'select') {
+    const selected = val || (c.key === 'status' ? DEFAULT_STATUS : '');
+    input = `<select id="f_${c.key}">${options.map(o => `<option value="${esc(o)}" ${o===selected?'selected':''}>${esc(o)||'(空)'}</option>`).join('')}</select>`;
+  } else if (f.type === 'date') {
+    const dv = val ? String(val).split(' ')[0] : '';
+    input = `<input type="date" id="f_${c.key}" value="${esc(dv)}">`;
+  } else if (f.type === 'textarea') {
+    input = `<textarea id="f_${c.key}">${esc(val || '')}</textarea>`;
+  } else if (c.key === 'avatarUrl') {
+    input = `<div class="avatar-preview" id="avatarPreviewBox">${avatarHtml(val, true, record && record.id)}</div>`;
+  } else if (c.key === 'email') {
+    input = record
+      ? `<div style="display:flex;gap:6px;"><input style="flex:1;" type="text" id="f_${c.key}" list="unusedEmailList" value="${esc(val || '')}" placeholder="输入或选择未使用邮箱"><button type="button" class="btn ghost sm" onclick="refreshProgramEmail(this)">刷新换邮箱</button></div>`
+      : `<input type="text" id="f_${c.key}" list="unusedEmailList" placeholder="输入或选择未使用邮箱">`;
+  } else {
+    input = `<input type="text" id="f_${c.key}" value="${esc(val || '')}">`;
+  }
+  let hint = '';
+  if (c.key === 'legalPersonName') {
+    hint = '<div class="form-hint">同一公司共用，填写一次后其他未锁定小程序自动更新</div>';
+  } else if (c.key === 'legalPersonPhone') {
+    hint = '<div class="form-hint">与法人姓名一起按公司同步</div>';
+  }
+  return `<div class="form-item${fullWidth}"><label>${c.label}</label>${input}${hint}</div>`;
+}
+
+function rejectReasonFieldHtml(val, visible){
+  return `<div class="form-item full" id="rejectReasonWrap" style="${visible ? '' : 'display:none;'}">
+    <label>备案驳回原因</label>
+    <textarea id="f_rejectReason" placeholder="请填写备案被驳回的原因">${esc(val || '')}</textarea>
+  </div>`;
+}
+
+function syncRejectReasonField(){
+  const wrap = document.getElementById('rejectReasonWrap');
+  const statusEl = document.getElementById('f_status');
+  if (!wrap || !statusEl) return;
+  wrap.style.display = statusEl.value === '备案驳回' ? '' : 'none';
+}
+
+function getCompanyLegal(companyName){
+  const company = (_companiesCache || []).find(c => c.name === companyName);
+  const record = getAllRecords().find(r => r.companyName === companyName && (r.legalPersonName || r.legalPersonPhone));
+  return {
+    name: (company && company.legalPersonName) || (record && record.legalPersonName) || '',
+    phone: (company && company.legalPersonPhone) || (record && record.legalPersonPhone) || '',
+  };
+}
+
+function fillLegalFromCompany(record){
+  const companyEl = document.getElementById('f_companyName');
+  const nameEl = document.getElementById('f_legalPersonName');
+  const phoneEl = document.getElementById('f_legalPersonPhone');
+  if (!companyEl || !nameEl || !phoneEl) return;
+  const company = companyEl.value;
+  const info = getCompanyLegal(company);
+  const sameCompany = record && record.companyName === company;
+  if (sameCompany) {
+    if (!nameEl.value) nameEl.value = info.name || record.legalPersonName || '';
+    if (!phoneEl.value) phoneEl.value = info.phone || record.legalPersonPhone || '';
+    return;
+  }
+  nameEl.value = info.name || '';
+  phoneEl.value = info.phone || '';
+}
+
+function bindProgramFormExtras(record){
+  syncRejectReasonField();
+  const statusEl = document.getElementById('f_status');
+  const companyEl = document.getElementById('f_companyName');
+  if (statusEl) {
+    statusEl.addEventListener('change', async () => {
+      syncRejectReasonField();
+      if (statusEl.value !== '备案驳回') return;
+      const reasonEl = document.getElementById('f_rejectReason');
+      if (reasonEl && reasonEl.value.trim()) return;
+      const reason = await askRejectReason(reasonEl ? reasonEl.value : '');
+      if (reason == null) {
+        statusEl.value = (record && record.status) || DEFAULT_STATUS;
+        syncRejectReasonField();
+        return;
+      }
+      if (reasonEl) reasonEl.value = reason;
+    });
+  }
+  if (companyEl) {
+    companyEl.addEventListener('change', () => fillLegalFromCompany(record));
+    if (!record) fillLegalFromCompany(null);
+  }
+}
+
+let _rejectReasonResolver = null;
+function askRejectReason(initial){
+  return new Promise(resolve => {
+    _rejectReasonResolver = resolve;
+    document.getElementById('rejectReasonInput').value = initial || '';
+    document.getElementById('rejectReasonModal').classList.add('show');
+    setTimeout(() => document.getElementById('rejectReasonInput').focus(), 0);
+  });
+}
+function finishRejectReason(value){
+  document.getElementById('rejectReasonModal').classList.remove('show');
+  const resolve = _rejectReasonResolver;
+  _rejectReasonResolver = null;
+  if (resolve) resolve(value);
+}
+function cancelRejectReason(){ finishRejectReason(null); }
+function confirmRejectReason(){
+  const reason = document.getElementById('rejectReasonInput').value.trim();
+  if (!reason) { showToast('请填写备案驳回原因', 'error'); return; }
+  finishRejectReason(reason);
+}
+
+function applyLegalToCache(saved){
+  if (!saved || !saved.companyName) return;
+  _recordsCache = _recordsCache.map(r => {
+    if (r.companyName !== saved.companyName || r.status === '已结算') return r;
+    return Object.assign({}, r, {
+      legalPersonName: saved.legalPersonName || '',
+      legalPersonPhone: saved.legalPersonPhone || '',
+    });
+  });
+  _companiesCache = (_companiesCache || []).map(c => {
+    if (c.name !== saved.companyName) return c;
+    return Object.assign({}, c, {
+      legalPersonName: saved.legalPersonName || '',
+      legalPersonPhone: saved.legalPersonPhone || '',
+    });
+  });
+}
+
 function openAdd(){
   editingId = null;
   document.getElementById('modalTitle').textContent = '新增记录';
   const grid = document.getElementById('formGrid');
-  grid.innerHTML = COLS.filter(c => c.formShow !== false).map(c => {
-    const f = c.form;
-    const fullWidth = (f.type === 'textarea') ? ' full' : '';
-    let input;
-    const options = c.key === 'companyName' ? getCompanyOptions() : f.options;
-    if (f.type === 'select') {
-      const defaultVal = c.key === 'status' ? DEFAULT_STATUS : '';
-      input = `<select id="f_${c.key}">${options.map(o => `<option value="${esc(o)}" ${o===defaultVal?'selected':''}>${esc(o)||'(空)'}</option>`).join('')}</select>`;
-    }
-    else if (f.type === 'date') input = `<input type="date" id="f_${c.key}">`;
-    else if (f.type === 'textarea') input = `<textarea id="f_${c.key}"></textarea>`;
-    else if (c.key === 'avatarUrl') input = `<div class="avatar-preview" id="avatarPreviewBox">${avatarHtml('', true)}</div>`;
-    else if (c.key === 'email') input = `<input type="text" id="f_${c.key}" list="unusedEmailList" placeholder="输入或选择未使用邮箱">`;
-    else input = `<input type="text" id="f_${c.key}">`;
-    return `<div class="form-item${fullWidth}"><label>${c.label}</label>${input}</div>`;
-  }).join('');
+  grid.innerHTML = COLS.filter(c => c.formShow !== false).map(c => programFormItemHtml(c, '', null)).join('') + rejectReasonFieldHtml('');
   refreshUnusedEmailDatalist();
+  bindProgramFormExtras(null);
   document.getElementById('editModal').classList.add('show');
 }
 
@@ -1269,21 +1423,9 @@ function openEdit(id){
   editingId = id;
   document.getElementById('modalTitle').textContent = '编辑记录';
   const grid = document.getElementById('formGrid');
-  grid.innerHTML = COLS.filter(c => c.formShow !== false).map(c => {
-    const f = c.form;
-    const val = r[c.key] || '';
-    const fullWidth = (f.type === 'textarea') ? ' full' : '';
-    let input;
-    const options = c.key === 'companyName' ? getCompanyOptions() : f.options;
-    if (f.type === 'select') input = `<select id="f_${c.key}">${options.map(o => `<option value="${esc(o)}" ${o===val?'selected':''}>${esc(o)||'(空)'}</option>`).join('')}</select>`;
-    else if (f.type === 'date') { const dv = val ? val.split(' ')[0] : ''; input = `<input type="date" id="f_${c.key}" value="${esc(dv)}">`; }
-    else if (f.type === 'textarea') input = `<textarea id="f_${c.key}">${esc(val)}</textarea>`;
-    else if (c.key === 'avatarUrl') input = `<div class="avatar-preview" id="avatarPreviewBox">${avatarHtml(val, true, id)}</div>`;
-    else if (c.key === 'email') input = `<div style="display:flex;gap:6px;"><input style="flex:1;" type="text" id="f_${c.key}" list="unusedEmailList" value="${esc(val)}" placeholder="输入或选择未使用邮箱"><button type="button" class="btn ghost sm" onclick="refreshProgramEmail(this)">刷新换邮箱</button></div>`;
-    else input = `<input type="text" id="f_${c.key}" value="${esc(val)}">`;
-    return `<div class="form-item${fullWidth}"><label>${c.label}</label>${input}</div>`;
-  }).join('');
+  grid.innerHTML = COLS.filter(c => c.formShow !== false).map(c => programFormItemHtml(c, r[c.key] || '', r)).join('') + rejectReasonFieldHtml(r.rejectReason || '', r.status === '备案驳回');
   refreshUnusedEmailDatalist();
+  bindProgramFormExtras(r);
   document.getElementById('editModal').classList.add('show');
 }
 
@@ -1317,6 +1459,12 @@ async function refreshProgramEmail(btn){
 async function saveRecord(){
   const data = {};
   COLS.forEach(c => { const el = document.getElementById('f_' + c.key); if (el) data[c.key] = el.value.trim() || null; });
+  const rejectEl = document.getElementById('f_rejectReason');
+  data.rejectReason = (data.status === '备案驳回' && rejectEl) ? rejectEl.value.trim() : '';
+  if (data.status === '备案驳回' && !data.rejectReason) {
+    showToast('选择备案驳回时请填写原因', 'error');
+    return;
+  }
   if (!editingId && !data.email) {
     const available = getUnusedEmails();
     if (available.length) data.email = available[0].email;
@@ -1350,6 +1498,7 @@ async function saveRecord(){
     } else {
       _recordsCache.push(saved);
     }
+    applyLegalToCache(saved);
   } catch(e) {
     showToast('提交失败：' + e.message, 'error');
     return;
@@ -1384,13 +1533,20 @@ async function deleteRecord(id){
 }
 
 async function quickUpdateStatus(id, status, el){
-  const old = (_recordsCache.find(r => String(r.id) === String(id)) || {}).status || '';
+  const current = _recordsCache.find(r => String(r.id) === String(id)) || {};
+  const old = current.status || '';
+  const payload = { status: status };
+  if (status === '备案驳回') {
+    const reason = await askRejectReason(current.rejectReason || '');
+    if (reason == null) { el.value = old; return; }
+    payload.rejectReason = reason;
+  }
   el.disabled = true;
   try {
-    const saved = await apiPatch('/api/programs/' + encodeURIComponent(id), { status: status });
+    const saved = await apiPatch('/api/programs/' + encodeURIComponent(id), payload);
     const idx = _recordsCache.findIndex(r => String(r.id) === String(id));
     if (idx >= 0) _recordsCache[idx] = saved;
-    renderStats(); renderDashboard(); renderWorkbench();
+    render(); renderDashboard(); renderWorkbench();
     showToast('状态已更新', 'success');
   } catch(e) {
     el.value = old;
@@ -1402,7 +1558,16 @@ async function bulkUpdateStatus(){
   const status = document.getElementById('bulkStatus').value;
   if (!status) { showToast('请选择目标状态', 'error'); return; }
   if (!selectedRows.size) { showToast('请先勾选记录', 'error'); return; }
-  const items = Array.from(selectedRows).map(id => ({ id: id, status: status }));
+  let rejectReason = '';
+  if (status === '备案驳回') {
+    rejectReason = await askRejectReason('');
+    if (rejectReason == null) return;
+  }
+  const items = Array.from(selectedRows).map(id => {
+    const item = { id: id, status: status };
+    if (status === '备案驳回') item.rejectReason = rejectReason;
+    return item;
+  });
   try {
     const result = await apiPost('/api/programs/bulk', { items: items });
     const savedItems = result && Array.isArray(result.items) ? result.items : [];
@@ -1443,7 +1608,9 @@ async function prepareNameImport(event){
       '头像':'avatarUrl','头像url':'avatarUrl','小程序头像':'avatarUrl',
       'appid':'appid','小程序appid':'appid','原始id':'originalId',
       '简介':'description','类目':'category','管理员':'admin',
+      '法人姓名':'legalPersonName','法人名称':'legalPersonName','法人':'legalPersonName',
       '法人手机号':'legalPersonPhone','法人电话':'legalPersonPhone','法人手机':'legalPersonPhone',
+      '驳回原因':'rejectReason','备案驳回原因':'rejectReason',
       '小程序手机号':'miniProgramPhone','小程序电话':'miniProgramPhone','小程序手机':'miniProgramPhone',
       '状态':'status',
       '邮箱':'email','密钥':'secret','secret':'secret','小程序密码':'miniProgramPassword',
@@ -1819,7 +1986,7 @@ function renderDashboard(){
     </div>`).join('') || '<div class="muted" style="font-size:12px;">暂无数据</div>';
 
   // 状态分布
-  const statusColors = { '待注册':'#f56c6c', '待审核':'#e6a23c', '备案中':'#409eff', '备案完成':'#13c2c2', '已结算':'#909399' };
+  const statusColors = { '待注册':'#f56c6c', '待审核':'#e6a23c', '备案中':'#409eff', '备案驳回':'#c41d7f', '备案完成':'#13c2c2', '已结算':'#909399' };
   let statusHtml = STATUS_LIST.map(s => {
     const count = byStatus[s];
     const pct = total ? (count/total*100).toFixed(1) : 0;
@@ -1846,9 +2013,11 @@ function renderDashboard(){
   const todos = [];
   const pendingRegister = all.filter(r => r.status === '待注册').length;
   const pendingReview = all.filter(r => r.status === '待审核').length;
+  const rejected = all.filter(r => r.status === '备案驳回').length;
   const overdue = all.filter(r => { if (r.status !== '备案中' || !r.submitDate) return false; const s = new Date(r.submitDate.split(' ')[0]); return !isNaN(s) && (now - s) / 86400000 >= 8; }).length;
   if (pendingRegister > 0) todos.push({ icon:'🔐', text:`待注册 ${pendingRegister} 个`, color:'var(--primary)', status:'待注册' });
   if (pendingReview > 0) todos.push({ icon:'📝', text:`待审核 ${pendingReview} 个`, color:'var(--warning)', status:'待审核' });
+  if (rejected > 0) todos.push({ icon:'🚫', text:`备案驳回 ${rejected} 个`, color:'#c41d7f', status:'备案驳回' });
   if (overdue > 0) todos.push({ icon:'⏰', text:`备案中超 8 天 ${overdue} 个`, color:'var(--danger)', status:'备案中' });
   document.getElementById('todoItems').innerHTML = todos.length ? todos.map(t => `<div class="clickable" onclick="openStatusFilter('${esc(t.status)}')" style="display:flex;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid #f0f2f5;font-size:12px;"><span style="font-size:16px;">${t.icon}</span><span style="color:${t.color};">${esc(t.text)}</span></div>`).join('') : '<div class="muted" style="font-size:12px;">✓ 暂无待处理事项</div>';
 

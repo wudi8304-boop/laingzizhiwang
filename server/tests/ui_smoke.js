@@ -57,6 +57,7 @@ const { chromium } = require("playwright");
     await page.waitForSelector("#page-data.active", { timeout: 10000 });
     const headers = await page.locator("#thead th").allInnerTexts();
     if (!headers.some(text => text.includes("头像"))) throw new Error("avatar column missing");
+    if (!headers.some(text => text.includes("法人姓名"))) throw new Error("legal name column missing");
     if (!headers.some(text => text.includes("法人手机号"))) throw new Error("legal phone column missing");
     if (!headers.some(text => text.includes("小程序手机号"))) throw new Error("program phone column missing");
     if (headers.some(text => text.includes("小程序密码"))) throw new Error("password column should be hidden");
@@ -71,7 +72,7 @@ const { chromium } = require("playwright");
       }
     }
     const statuses = await page.locator("#bulkStatus option").allTextContents();
-    const expectedStatuses = ["批量改状态", "待注册", "待审核", "备案中", "备案完成", "已结算"];
+    const expectedStatuses = ["批量改状态", "待注册", "待审核", "备案中", "备案驳回", "备案完成", "已结算"];
     if (JSON.stringify(statuses) !== JSON.stringify(expectedStatuses)) {
       throw new Error("unexpected statuses: " + JSON.stringify(statuses));
     }
@@ -90,8 +91,15 @@ const { chromium } = require("playwright");
     if (!await page.locator("#avatarPreviewBox").count()) {
       throw new Error("avatar preview missing");
     }
-    for (const selector of ["#f_legalPersonPhone", "#f_miniProgramPhone", "#f_miniProgramPassword", "#f_description", "#f_category"]) {
+    for (const selector of ["#f_legalPersonName", "#f_legalPersonPhone", "#f_miniProgramPhone", "#f_miniProgramPassword", "#f_description", "#f_category"]) {
       if (!await page.locator(selector).count()) throw new Error("edit field missing: " + selector);
+    }
+    await page.selectOption("#f_status", "备案驳回");
+    await page.waitForSelector("#rejectReasonModal.show", { timeout: 5000 });
+    await page.fill("#rejectReasonInput", "主体信息不符");
+    await page.locator("#rejectReasonModal button", { hasText: "确认" }).click();
+    if (await page.locator("#f_rejectReason").inputValue() !== "主体信息不符") {
+      throw new Error("reject reason was not written back to the form");
     }
     if (!await page.locator("#editModal button", { hasText: "刷新换邮箱" }).count()) {
       throw new Error("refresh email action missing");

@@ -66,6 +66,7 @@ class BackendTest(unittest.TestCase):
         updated = service.update("p1", {"legalPersonPhone": "13700000003"})
         self.assertEqual("13700000003", updated["legalPersonPhone"])
         self.assertEqual("13900000002", updated["miniProgramPhone"])
+        self.assertEqual("", created.get("legalPersonName") or "")
         self.assertEqual("备案中", service.update("p1", {"status": "审核中"})["status"])
         service.update("p1", {"email": "b@example.com"})
         with self.db.connect() as conn:
@@ -224,7 +225,12 @@ class BackendTest(unittest.TestCase):
         legacy.initialize()
         with legacy.connect() as upgraded:
             columns = {row["name"] for row in upgraded.execute("PRAGMA table_info(programs)")}
-            self.assertTrue({"completed_at", "settled_at", "legal_person_phone", "mini_program_phone"} <= columns)
+            self.assertTrue({
+                "completed_at", "settled_at", "legal_person_name", "legal_person_phone",
+                "mini_program_phone", "reject_reason",
+            } <= columns)
+            company_columns = {row["name"] for row in upgraded.execute("PRAGMA table_info(companies)")}
+            self.assertTrue({"legal_person_name", "legal_person_phone"} <= company_columns)
             email_columns = {
                 row["name"] for row in upgraded.execute("PRAGMA table_info(emails)")
             }
@@ -249,6 +255,26 @@ class BackendTest(unittest.TestCase):
 
         reviewing = service.update("p1", {"status": "待审核"})
         self.assertEqual("", reviewing["completionTime"])
+        rejected = service.update("p1", {"status": "备案驳回", "rejectReason": "主体信息不符"})
+        self.assertEqual("备案驳回", rejected["status"])
+        self.assertEqual("主体信息不符", rejected["rejectReason"])
+        self.assertEqual("", rejected["completionTime"])
+        with self.assertRaisesRegex(ValueError, "备案驳回原因"):
+            service.update("p1", {"status": "备案驳回", "rejectReason": "  "})
+        with self.assertRaisesRegex(ValueError, "备案驳回原因"):
+            service.create({
+                "id": "p-reject", "companyName": "甲", "miniProgramName": "驳回程序",
+                "status": "备案驳回",
+            })
+        leftover = service.update("p1", {
+            "status": "待审核", "rejectReason": "主体信息不符", "description": "编辑页整表提交",
+        })
+        self.assertEqual("待审核", leftover["status"])
+        self.assertEqual("", leftover["rejectReason"])
+        rejected = service.update("p1", {"status": "备案驳回", "rejectReason": "材料不全"})
+        self.assertEqual("材料不全", rejected["rejectReason"])
+        cleared = service.update("p1", {"status": "待审核"})
+        self.assertEqual("", cleared["rejectReason"])
         with patch("services.programs.now", return_value="2026-07-03 09:00:00"):
             recompleted = service.update("p1", {"status": "备案完成"})
         self.assertEqual("2026-07-03 09:00:00", recompleted["completionTime"])
@@ -263,6 +289,47 @@ class BackendTest(unittest.TestCase):
             with self.assertRaises(sqlite3.IntegrityError):
                 conn.execute("UPDATE programs SET category='其他' WHERE id='p1'")
         self.assertEqual("", service.get("p1")["category"])
+
+    def test_company_legal_is_shared_and_skips_settled(self):
+        service = ProgramService(self.db)
+        first = service.create({
+            "id": "p1", "companyName": "甲", "miniProgramName": "程序A",
+            "legalPersonName": "张三", "legalPersonPhone": "13800000001",
+        })
+        self.assertEqual("张三", first["legalPersonName"])
+        second = service.create({
+            "id": "p2", "companyName": "甲", "miniProgramName": "程序B",
+        })
+        self.assertEqual("张三", second["legalPersonName"])
+        self.assertEqual("13800000001", second["legalPersonPhone"])
+        service.update("p2", {"status": "已结算"})
+        updated = service.update("p1", {
+            "legalPersonName": "李四", "legalPersonPhone": "13900000002",
+        })
+        self.assertEqual("李四", updated["legalPersonName"])
+        self.assertEqual("李四", service.get("p1")["legalPersonName"])
+        self.assertEqual("张三", service.get("p2")["legalPersonName"])
+        self.assertEqual("13800000001", service.get("p2")["legalPersonPhone"])
+        third = service.create({
+            "id": "p3", "companyName": "甲", "miniProgramName": "程序C",
+        })
+        self.assertEqual("李四", third["legalPersonName"])
+        self.assertEqual("13900000002", third["legalPersonPhone"])
+        with self.db.connect() as conn:
+            company = conn.execute("SELECT legal_person_name,legal_person_phone FROM companies WHERE name='甲'").fetchone()
+        self.assertEqual("李四", company["legal_person_name"])
+        self.assertEqual("13900000002", company["legal_person_phone"])
+        service.update("p3", {"description": "只改简介", "legalPersonName": "李四", "legalPersonPhone": "13900000002"})
+        with self.db.connect() as conn:
+            conn.execute("UPDATE programs SET legal_person_name='',legal_person_phone='' WHERE id='p3'")
+        untouched = service.update("p3", {"description": "空法人未改", "legalPersonName": "", "legalPersonPhone": ""})
+        self.assertEqual("", untouched["legalPersonName"])
+        self.assertEqual("李四", service.get("p1")["legalPersonName"])
+        self.assertEqual("13900000002", service.get("p1")["legalPersonPhone"])
+        with self.db.connect() as conn:
+            company = conn.execute("SELECT legal_person_name,legal_person_phone FROM companies WHERE name='甲'").fetchone()
+        self.assertEqual("李四", company["legal_person_name"])
+        self.assertEqual("13900000002", company["legal_person_phone"])
 
     def test_daily_checkin_switch_balance_and_idempotency(self):
         calls = []
@@ -617,16 +684,21 @@ class BackendTest(unittest.TestCase):
         self.assertEqual(0, calls["run"], "00:02 只能执行签到，不能查询小程序备案")
         self.assertEqual("success", service.run("manual", "test-1", datetime(2026, 1, 1, 10, 0))["status"])
         self.assertEqual([], calls["sent"], "新公司首次检测只能建立 baseline")
+        ProgramService(self.db).create({
+            "id": "rej-b", "companyName": "甲", "miniProgramName": "程序B",
+            "status": "备案驳回", "rejectReason": "主体信息不符",
+        })
         service.run("manual", "test-2", datetime(2026, 1, 1, 11, 0))
         service.run("manual", "test-3", datetime(2026, 1, 1, 12, 0))
         self.assertEqual(1, len(calls["sent"]))
         with self.db.connect() as conn:
             self.assertEqual(1, conn.execute("SELECT COUNT(*) n FROM notifications").fetchone()["n"])
             matched = conn.execute(
-                "SELECT status,completed_at FROM programs WHERE mini_program_name='程序B'"
+                "SELECT status,completed_at,reject_reason FROM programs WHERE mini_program_name='程序B'"
             ).fetchone()
             self.assertEqual("备案完成", matched["status"])
             self.assertEqual("2026-01-01 11:00:00", matched["completed_at"])
+            self.assertEqual("", matched["reject_reason"])
             self.assertEqual(2, conn.execute("SELECT COUNT(*) n FROM approved_programs").fetchone()["n"])
 
 

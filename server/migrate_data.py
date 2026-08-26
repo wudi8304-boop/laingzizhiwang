@@ -164,11 +164,11 @@ def migrate(db=None, repo_root=None, data_dir=None, force=False):
                 if company_name:
                     company_id = _company(conn, {"name": company_name})
                 stamp = now()
+                columns = ["id", "company_id"] + list(FIELDS.values()) + ["source", "created_at", "updated_at"]
                 conn.execute(
-                    """INSERT INTO programs(id,company_id,company_name,mini_program_name,avatar_url,description,category,
-                    appid,original_id,secret,admin,legal_person_phone,mini_program_phone,status,email,
-                    mini_program_password,submit_date,task_reason,external_id,source,created_at,updated_at)
-                    VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                    "INSERT INTO programs(%s) VALUES(%s)" % (
+                        ",".join(columns), ",".join("?" * len(columns)),
+                    ),
                     [pid, company_id] + vals + ["migration", stamp, stamp],
                 )
 

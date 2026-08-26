@@ -27,6 +27,7 @@ CREATE TABLE IF NOT EXISTS companies (
  enabled INTEGER NOT NULL DEFAULT 1, monitor_listed INTEGER NOT NULL DEFAULT 1,
  last_check TEXT, last_count INTEGER NOT NULL DEFAULT 0,
  has_new INTEGER NOT NULL DEFAULT 0, assigned_admin_id INTEGER REFERENCES admin_users(id) ON DELETE SET NULL,
+ legal_person_name TEXT NOT NULL DEFAULT '', legal_person_phone TEXT NOT NULL DEFAULT '',
  created_at TEXT NOT NULL, updated_at TEXT NOT NULL
 );
 CREATE TABLE IF NOT EXISTS programs (
@@ -34,11 +35,13 @@ CREATE TABLE IF NOT EXISTS programs (
  company_name TEXT NOT NULL DEFAULT '', mini_program_name TEXT NOT NULL DEFAULT '',
  avatar_url TEXT NOT NULL DEFAULT '', description TEXT NOT NULL DEFAULT '', category TEXT NOT NULL DEFAULT '',
  appid TEXT NOT NULL DEFAULT '', original_id TEXT NOT NULL DEFAULT '', secret TEXT NOT NULL DEFAULT '',
- admin TEXT NOT NULL DEFAULT '', legal_person_phone TEXT NOT NULL DEFAULT '',
- mini_program_phone TEXT NOT NULL DEFAULT '', status TEXT NOT NULL DEFAULT '待注册', email TEXT NOT NULL DEFAULT '',
+ admin TEXT NOT NULL DEFAULT '', legal_person_name TEXT NOT NULL DEFAULT '',
+ legal_person_phone TEXT NOT NULL DEFAULT '', mini_program_phone TEXT NOT NULL DEFAULT '',
+ status TEXT NOT NULL DEFAULT '待注册', email TEXT NOT NULL DEFAULT '',
  completed_at TEXT NOT NULL DEFAULT '', settled_at TEXT NOT NULL DEFAULT '',
  mini_program_password TEXT NOT NULL DEFAULT '', submit_date TEXT NOT NULL DEFAULT '',
- task_reason TEXT NOT NULL DEFAULT '', external_id TEXT NOT NULL DEFAULT '',
+ task_reason TEXT NOT NULL DEFAULT '', reject_reason TEXT NOT NULL DEFAULT '',
+ external_id TEXT NOT NULL DEFAULT '',
  source TEXT NOT NULL DEFAULT 'api', created_at TEXT NOT NULL, updated_at TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_programs_company ON programs(company_name);
@@ -141,7 +144,8 @@ class Database:
             existing = {row["name"] for row in conn.execute("PRAGMA table_info(programs)")}
             for name in (
                 "avatar_url", "description", "category", "completed_at", "settled_at",
-                "task_reason", "external_id", "legal_person_phone", "mini_program_phone",
+                "task_reason", "external_id", "legal_person_name", "legal_person_phone",
+                "mini_program_phone", "reject_reason",
             ):
                 if name not in existing:
                     conn.execute("ALTER TABLE programs ADD COLUMN %s TEXT NOT NULL DEFAULT ''" % name)
@@ -164,6 +168,46 @@ class Database:
                 conn.execute("ALTER TABLE companies ADD COLUMN assigned_admin_id INTEGER")
             if "monitor_listed" not in company_columns:
                 conn.execute("ALTER TABLE companies ADD COLUMN monitor_listed INTEGER NOT NULL DEFAULT 1")
+            if "legal_person_name" not in company_columns:
+                conn.execute("ALTER TABLE companies ADD COLUMN legal_person_name TEXT NOT NULL DEFAULT ''")
+            if "legal_person_phone" not in company_columns:
+                conn.execute("ALTER TABLE companies ADD COLUMN legal_person_phone TEXT NOT NULL DEFAULT ''")
+            conn.execute(
+                """UPDATE companies SET legal_person_name=COALESCE((
+                     SELECT p.legal_person_name FROM programs p
+                     WHERE p.company_id=companies.id AND trim(p.legal_person_name)<>''
+                     ORDER BY p.updated_at DESC LIMIT 1
+                   ), legal_person_name)
+                   WHERE trim(legal_person_name)=''"""
+            )
+            conn.execute(
+                """UPDATE companies SET legal_person_phone=COALESCE((
+                     SELECT p.legal_person_phone FROM programs p
+                     WHERE p.company_id=companies.id AND trim(p.legal_person_phone)<>''
+                     ORDER BY p.updated_at DESC LIMIT 1
+                   ), legal_person_phone)
+                   WHERE trim(legal_person_phone)=''"""
+            )
+            conn.execute(
+                """UPDATE programs SET legal_person_name=(
+                     SELECT c.legal_person_name FROM companies c WHERE c.id=programs.company_id
+                   )
+                   WHERE status<>'已结算' AND trim(legal_person_name)='' AND company_id IS NOT NULL
+                     AND EXISTS (
+                       SELECT 1 FROM companies c
+                       WHERE c.id=programs.company_id AND trim(c.legal_person_name)<>''
+                     )"""
+            )
+            conn.execute(
+                """UPDATE programs SET legal_person_phone=(
+                     SELECT c.legal_person_phone FROM companies c WHERE c.id=programs.company_id
+                   )
+                   WHERE status<>'已结算' AND trim(legal_person_phone)='' AND company_id IS NOT NULL
+                     AND EXISTS (
+                       SELECT 1 FROM companies c
+                       WHERE c.id=programs.company_id AND trim(c.legal_person_phone)<>''
+                     )"""
+            )
             conn.execute(
                 "CREATE INDEX IF NOT EXISTS idx_companies_assigned_admin "
                 "ON companies(assigned_admin_id)"
