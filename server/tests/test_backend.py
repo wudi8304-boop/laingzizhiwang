@@ -290,6 +290,25 @@ class BackendTest(unittest.TestCase):
                 conn.execute("UPDATE programs SET category='其他' WHERE id='p1'")
         self.assertEqual("", service.get("p1")["category"])
 
+    def test_submit_date_only_keeps_when_filing(self):
+        service = ProgramService(self.db)
+        created = service.create({
+            "id": "s1", "companyName": "甲", "miniProgramName": "程序A", "status": "待审核",
+        })
+        self.assertEqual("", created["submitDate"])
+        with patch("services.programs.now", return_value="2026-09-02 14:05:00"):
+            filing = service.update("s1", {"status": "备案中"})
+        self.assertEqual("2026-09-02", filing["submitDate"])
+        kept = service.update("s1", {"description": "补充说明"})
+        self.assertEqual("2026-09-02", kept["submitDate"])
+        rejected = service.update("s1", {"status": "备案驳回", "rejectReason": "材料不全"})
+        self.assertEqual("", rejected["submitDate"])
+        with patch("services.programs.now", return_value="2026-09-03 09:00:00"):
+            again = service.update("s1", {"status": "备案中"})
+        self.assertEqual("2026-09-03", again["submitDate"])
+        finished = service.update("s1", {"status": "备案完成"})
+        self.assertEqual("", finished["submitDate"])
+
     def test_company_legal_is_shared_and_skips_settled(self):
         service = ProgramService(self.db)
         first = service.create({

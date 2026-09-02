@@ -310,9 +310,11 @@ class ProgramService:
     def _apply_business_rules(data, current=None):
         current = current or {}
         status = data.get("status", current.get("status", ""))
-        if status == "备案中" and "submitDate" not in data and not current.get("submitDate"):
-            data["submitDate"] = now()[:10]
-        elif status in ("备案完成", "已结算"):
+        if status == "备案中":
+            entering = current.get("status") != "备案中"
+            if entering or not str(current.get("submitDate") or "").strip():
+                data["submitDate"] = now()[:10]
+        else:
             data["submitDate"] = ""
         effective = dict(current)
         effective.update(data)

@@ -315,7 +315,7 @@ class MonitorService:
                       "hctype": "1", "page": str(page)}
             req = urllib.request.Request(endpoint + "?" + urllib.parse.urlencode(params),
                                          headers={"User-Agent": "laingzizhiwang-monitor/2.0"})
-            with urllib.request.urlopen(req, timeout=20) as response:
+            with urllib.request.urlopen(req, timeout=30) as response:
                 data = json.loads(response.read().decode("utf-8"))
             if data.get("code") != 200:
                 raise RuntimeError(data.get("msg") or "备案接口查询失败")

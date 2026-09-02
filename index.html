@@ -1470,22 +1470,14 @@ async function saveRecord(){
     if (available.length) data.email = available[0].email;
   }
   if (!data.status) data.status = DEFAULT_STATUS;
-  // 提交时间根据状态自动管理（表单中已隐藏）
-  const today = new Date().toISOString().slice(0, 10);
-  if (data.status === '备案完成' || data.status === '已结算') {
-    data.submitDate = null;  // 备案完成/已结算 清空提交时间
-  } else if (data.status === '备案中') {
-    // 备案中：如果没有提交时间则填今天，已有则保留
-    const existing = editingId ? (getAllRecords().find(r => r.id === editingId) || {}).submitDate : null;
-    data.submitDate = existing || today;
+  // 提交时间由状态决定：只有备案中写入当天，其他状态一律清空
+  const now = new Date();
+  const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+  if (data.status === '备案中') {
+    const existing = editingId ? (getAllRecords().find(r => r.id === editingId) || {}) : {};
+    data.submitDate = existing.status === '备案中' && existing.submitDate ? existing.submitDate : today;
   } else {
-    // 其他状态：保留原值（编辑时）
-    if (editingId) {
-      const orig = getAllRecords().find(r => r.id === editingId);
-      data.submitDate = orig ? orig.submitDate : null;
-    } else {
-      data.submitDate = null;
-    }
+    data.submitDate = null;
   }
   const successMessage = editingId ? '已保存修改' : '已新增记录';
   try {
