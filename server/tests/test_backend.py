@@ -192,10 +192,52 @@ class BackendTest(unittest.TestCase):
         self.db.initialize()
         service = ProgramService(self.db)
         self.assertEqual("备案中", service.get("old1")["status"])
-        self.assertEqual("已结算", service.get("old2")["status"])
+        self.assertEqual("已验收", service.get("old2")["status"])
         self.assertEqual("待注册", service.get("old3")["status"])
         self.assertEqual("", service.get("old1")["completionTime"])
         self.assertEqual("", service.get("old2")["settlementTime"])
+
+    def test_acceptance_third_party_settlement_and_secret_limit(self):
+        service = ProgramService(self.db)
+        sample = "38a1a63d44a3eff8bafe0787e07023b1"
+        with patch("services.programs.now", return_value="2026-07-01 09:00:00"):
+            created = service.create({
+                "id": "acc", "companyName": "甲", "miniProgramName": "程序A",
+                "status": "已验收", "secret": sample,
+            })
+        self.assertEqual("已验收", created["status"])
+        self.assertEqual(sample, created["secret"])
+        self.assertEqual("2026-07-01 09:00:00", created["completionTime"])
+        self.assertEqual("", created["settlementTime"])
+        kept = service.update("acc", {"description": "补充"})
+        self.assertEqual("已验收", kept["status"])
+        self.assertEqual("2026-07-01 09:00:00", kept["completionTime"])
+        cleared = service.update("acc", {"status": "待审核"})
+        self.assertEqual("", cleared["completionTime"])
+        with patch("services.programs.now", return_value="2026-07-02 09:00:00"):
+            accepted = service.update("acc", {"status": "备案完成"})
+        self.assertEqual("2026-07-02 09:00:00", accepted["completionTime"])
+        with patch("services.programs.now", return_value="2026-07-03 09:00:00"):
+            still = service.update("acc", {"status": "已验收", "secret": sample})
+        self.assertEqual("2026-07-02 09:00:00", still["completionTime"])
+        self.assertEqual("", still["settlementTime"])
+        with patch("services.programs.now", return_value="2026-08-01 09:00:00"):
+            third = service.update("acc", {"status": "已结算三方"})
+        self.assertEqual("已结算三方", third["status"])
+        self.assertEqual("2026-07-02 09:00:00", third["completionTime"])
+        self.assertEqual("2026-08-01 09:00:00", third["settlementTime"])
+        with self.assertRaises(ValueError):
+            service.update("acc", {"category": "工具"})
+        with self.assertRaisesRegex(ValueError, "2KB"):
+            service.create({
+                "id": "big", "companyName": "甲", "miniProgramName": "大密钥",
+                "secret": "a" * 2049,
+            })
+        exact = service.create({
+            "id": "edge", "companyName": "甲", "miniProgramName": "边界",
+            "secret": "b" * 2048,
+        })
+        self.assertEqual(2048, len(exact["secret"]))
 
     def test_existing_database_adds_milestone_columns_and_lock(self):
         path = os.path.join(self.tmp, "legacy.db")

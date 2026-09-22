@@ -5,12 +5,15 @@ from db import now
 
 
 DEFAULT_STATUS = "待注册"
+COMPLETED_STATUSES = ("备案完成", "已验收", "已结算", "已结算三方")
+SETTLED_STATUSES = ("已结算", "已结算三方")
+LOCKED_STATUSES = ("已结算", "已结算三方")
+SECRET_MAX_BYTES = 2048
 STATUS_ALIASES = {
     "": DEFAULT_STATUS,
     "审核中": "备案中",
     "审核通过": "备案完成",
     "待验收": "备案完成",
-    "已验收": "已结算",
 }
 FIELDS = {
     "companyName": "company_name", "miniProgramName": "mini_program_name",
@@ -125,8 +128,8 @@ class ProgramService:
         actor = self._actor(actor)
         program_id = str(data.get("id") or ("rec_" + uuid.uuid4().hex[:12]))
         stamp = now()
-        completed_at = stamp if data["status"] == "备案完成" else ""
-        settled_at = stamp if data["status"] == "已结算" else ""
+        completed_at = stamp if data["status"] in COMPLETED_STATUSES else ""
+        settled_at = stamp if data["status"] in SETTLED_STATUSES else ""
         with self.db.transaction() as conn:
             if conn.execute("SELECT 1 FROM programs WHERE id=?", (program_id,)).fetchone():
                 raise ValueError("program id already exists")
@@ -164,7 +167,7 @@ class ProgramService:
             current_row = self._assert_program(conn, program_id)
         if not current_row:
             return None
-        if current_row["status"] == "已结算":
+        if current_row["status"] in LOCKED_STATUSES:
             raise ValueError("已结算的小程序已锁定，不允许修改")
         actor = self._actor(actor)
         current = external(current_row)
@@ -181,15 +184,20 @@ class ProgramService:
             if "email" in data:
                 self._assert_email_available(conn, str(data.get("email") or ""), program_id)
             target_status = str(data.get("status") or "")
-            if target_status == "备案完成" and current.get("status") != "备案完成":
-                updates.append("completed_at=?")
-                args.append(stamp)
-            elif "status" in data and target_status not in ("备案完成", "已结算"):
-                updates.append("completed_at=?")
-                args.append("")
-            if target_status == "已结算" and current.get("status") != "已结算":
-                updates.append("settled_at=?")
-                args.append(stamp)
+            current_status = str(current.get("status") or "")
+            if "status" in data:
+                if target_status in COMPLETED_STATUSES and current_status not in COMPLETED_STATUSES:
+                    updates.append("completed_at=?")
+                    args.append(stamp)
+                elif target_status not in COMPLETED_STATUSES:
+                    updates.append("completed_at=?")
+                    args.append("")
+                if target_status in SETTLED_STATUSES and current_status not in SETTLED_STATUSES:
+                    updates.append("settled_at=?")
+                    args.append(stamp)
+                elif current_status in SETTLED_STATUSES and target_status not in SETTLED_STATUSES:
+                    updates.append("settled_at=?")
+                    args.append("")
             company_id = current_row["company_id"]
             if "companyName" in data:
                 self._assert_company(conn, str(data.get("companyName") or ""))
@@ -233,7 +241,7 @@ class ProgramService:
             row = self._assert_program(conn, program_id)
             if not row:
                 return None
-            if row["status"] == "已结算":
+            if row["status"] in LOCKED_STATUSES:
                 raise ValueError("已结算的小程序已锁定，不允许更换邮箱")
             replacement = conn.execute(
                 """SELECT e.address FROM emails e
@@ -309,6 +317,11 @@ class ProgramService:
     @staticmethod
     def _apply_business_rules(data, current=None):
         current = current or {}
+        if "secret" in data:
+            secret = str(data.get("secret") or "")
+            if len(secret.encode("utf-8")) > SECRET_MAX_BYTES:
+                raise ValueError("密钥不能超过 2KB")
+            data["secret"] = secret
         status = data.get("status", current.get("status", ""))
         if status == "备案中":
             entering = current.get("status") != "备案中"
@@ -389,7 +402,7 @@ class ProgramService:
         program_sets.append("updated_at=?")
         program_args.extend([stamp, company_id])
         conn.execute(
-            "UPDATE programs SET %s WHERE company_id=? AND status<>'已结算'" % ",".join(program_sets),
+            "UPDATE programs SET %s WHERE company_id=? AND status NOT IN ('已结算','已结算三方')" % ",".join(program_sets),
             program_args,
         )
 

@@ -211,8 +211,8 @@ class MonitorService:
             for row in rows:
                 conn.execute(
                     """UPDATE programs SET
-                       completed_at=CASE WHEN status NOT IN ('备案完成','已结算') THEN ? ELSE completed_at END,
-                       status='备案完成',reject_reason='',updated_at=? WHERE id=? AND status<>'已结算'""",
+                       completed_at=CASE WHEN status NOT IN ('备案完成','已验收','已结算','已结算三方') THEN ? ELSE completed_at END,
+                       status='备案完成',reject_reason='',updated_at=? WHERE id=? AND status NOT IN ('已验收','已结算','已结算三方')""",
                     (stamp, stamp, row["id"]),
                 )
         else:

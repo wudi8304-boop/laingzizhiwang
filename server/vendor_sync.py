@@ -15,7 +15,7 @@ from datetime import datetime, timedelta
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from db import Database, now
 from migrate_data import migrate
-from services.programs import ProgramService
+from services.programs import LOCKED_STATUSES, ProgramService
 
 
 HEADER_MAP = {
@@ -132,7 +132,7 @@ def upsert_records(db, records, source_ref="", new_companies_only=True):
                 summary["conflicts"] += 1
                 add_exception(db, "乙方平台记录匹配到多个小程序", item)
                 continue
-            if len(matches) == 1 and service.get(matches[0]["id"])["status"] == "已结算":
+            if len(matches) == 1 and service.get(matches[0]["id"])["status"] in LOCKED_STATUSES:
                 summary["skipped"] += 1
                 continue
             item["externalId"] = external_id
@@ -172,7 +172,7 @@ def export_match_candidates(db, output_path):
     with db.connect() as conn:
         rows = conn.execute(
             """SELECT id,external_id,appid,mini_program_name FROM programs
-               WHERE status<>'已结算' AND (
+               WHERE status NOT IN ('已结算','已结算三方') AND (
                   trim(avatar_url)='' OR trim(description)='' OR trim(category)=''
                   OR trim(appid)='' OR trim(original_id)='' OR trim(secret)=''
                   OR trim(admin)='' OR trim(email)=''
@@ -229,7 +229,7 @@ def match_records(db, records, source_ref=""):
             program_id = matches[0]["id"]
             existing = service.get(program_id)
             summary["matched"] += 1
-            if existing["status"] == "已结算":
+            if existing["status"] in LOCKED_STATUSES:
                 summary["skipped"] += 1
                 continue
             updates = {}

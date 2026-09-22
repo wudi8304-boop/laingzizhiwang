@@ -72,7 +72,7 @@ const { chromium } = require("playwright");
       }
     }
     const statuses = await page.locator("#bulkStatus option").allTextContents();
-    const expectedStatuses = ["批量改状态", "待注册", "待审核", "备案中", "备案驳回", "备案完成", "已结算"];
+    const expectedStatuses = ["批量改状态", "待注册", "待审核", "备案中", "备案驳回", "备案完成", "已验收", "已结算", "已结算三方"];
     if (JSON.stringify(statuses) !== JSON.stringify(expectedStatuses)) {
       throw new Error("unexpected statuses: " + JSON.stringify(statuses));
     }
@@ -81,6 +81,17 @@ const { chromium } = require("playwright");
     if (await page.locator("#f_status").inputValue() !== "待注册") {
       throw new Error("new program default status is not 待注册");
     }
+    const statusOptions = await page.locator("#f_status option").allTextContents();
+    if (!statusOptions.includes("已验收") || !statusOptions.includes("已结算三方")) {
+      throw new Error("new statuses missing: " + JSON.stringify(statusOptions));
+    }
+    const secret = page.locator("#f_secret");
+    if (await secret.evaluate(el => el.tagName) !== "INPUT") throw new Error("secret field should be a compact input");
+    await secret.fill("38a1a63d44a3eff8bafe0787e07023b1");
+    if (await page.locator("#f_secretCount").textContent() !== "32 字") {
+      throw new Error("secret count mismatch: " + await page.locator("#f_secretCount").textContent());
+    }
+    if (await secret.evaluate(el => el.style.width) !== "34ch") throw new Error("secret width was not fitted");
     await page.locator("#editModal .close").click();
     const avatarImages = await page.locator("#tbody img.avatar-thumb").count();
     await page.locator("#tbody button", { hasText: "编辑" }).first().click();

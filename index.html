@@ -104,7 +104,14 @@
   .tag-status-备案中 { background: #ecf5ff; color: #409eff; border: 1px solid #d9ecff; }
   .tag-status-备案驳回 { background: #fdf2f8; color: #c41d7f; border: 1px solid #ffadd2; }
   .tag-status-备案完成 { background: #e6fffb; color: #13c2c2; border: 1px solid #87e8de; }
+  .tag-status-已验收 { background: #f0f9eb; color: #67c23a; border: 1px solid #e1f3d8; }
   .tag-status-已结算 { background: #f4f4f5; color: #909399; border: 1px solid #e9e9eb; }
+  .tag-status-已结算三方 { background: #eef2ff; color: #3f51b5; border: 1px solid #c5cae9; }
+  .secret-field { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+  .secret-field .secret-input { width: 34ch; max-width: 100%; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+  .secret-meta { display: flex; align-items: center; gap: 8px; margin-top: 4px; }
+  .secret-count { font-size: 11px; color: var(--text-3); white-space: nowrap; }
+  .secret-count.over { color: var(--danger); font-weight: 600; }
   .status-cell { display: flex; flex-direction: column; align-items: flex-start; gap: 4px; }
   .reject-reason { max-width: 180px; font-size: 10px; color: #c41d7f; line-height: 1.4; word-break: break-all; }
   .form-hint { font-size: 11px; color: var(--text-3); line-height: 1.4; }
@@ -705,22 +712,56 @@ const COLS = [
   { key: 'category', label: '类目', type: 'text', sortable: true, form: { type: 'text' }, tableShow: false },
   { key: 'appid', label: 'AppID', type: 'copy', sortable: true, form: { type: 'text' } },
   { key: 'originalId', label: '原始ID', type: 'copy', form: { type: 'text' } },
-  { key: 'secret', label: '密钥', type: 'copy', form: { type: 'textarea' } },
+  { key: 'secret', label: '密钥', type: 'copy', form: { type: 'secret' } },
   { key: 'admin', label: '管理员', sortable: true, form: { type: 'text' } },
   { key: 'legalPersonName', label: '法人姓名', sortable: true, form: { type: 'text' } },
   { key: 'legalPersonPhone', label: '法人手机号', type: 'mono', sortable: true, form: { type: 'text' } },
   { key: 'miniProgramPhone', label: '小程序手机号', type: 'mono', sortable: true, form: { type: 'text' } },
-  { key: 'status', label: '状态', type: 'status', sortable: true, form: { type: 'select', options: ['待注册', '待审核', '备案中', '备案驳回', '备案完成', '已结算'] } },
+  { key: 'status', label: '状态', type: 'status', sortable: true, form: { type: 'select', options: ['待注册', '待审核', '备案中', '备案驳回', '备案完成', '已验收', '已结算', '已结算三方'] } },
   { key: 'email', label: '邮箱', type: 'mono', form: { type: 'text' } },
   { key: 'miniProgramPassword', label: '小程序密码', type: 'copy', form: { type: 'text' }, tableShow: false },
   { key: 'submitDate', label: '提交时间', type: 'date', sortable: true, form: { type: 'date' }, formShow: false }
 ];
-const STATUS_LIST = ['待注册','待审核','备案中','备案驳回','备案完成','已结算'];
+const STATUS_LIST = ['待注册','待审核','备案中','备案驳回','备案完成','已验收','已结算','已结算三方'];
 const DEFAULT_STATUS = '待注册';
 const OP_COL = { key: '_op', label: '操作', type: 'op' };
-// 状态排序优先级：待注册 > 待审核 > 备案驳回 > 备案中 > 备案完成 > 已结算
-const STATUS_ORDER = { '待注册': 0, '待审核': 1, '备案驳回': 2, '备案中': 3, '备案完成': 4, '已结算': 5 };
+// 状态排序优先级：待注册 > 待审核 > 备案驳回 > 备案中 > 备案完成 > 已验收 > 已结算 > 已结算三方
+const STATUS_ORDER = { '待注册': 0, '待审核': 1, '备案驳回': 2, '备案中': 3, '备案完成': 4, '已验收': 5, '已结算': 6, '已结算三方': 7 };
 function getStatusOrder(s){ return STATUS_ORDER[s] != null ? STATUS_ORDER[s] : 99; }
+function isLockedStatus(status){ return status === '已结算' || status === '已结算三方'; }
+const SECRET_MAX_BYTES = 2048;
+function secretByteLength(text){ return new TextEncoder().encode(text || '').length; }
+function fitSecretField(el){
+  if (!el) return;
+  const value = el.value || '';
+  const chars = value.length;
+  const bytes = secretByteLength(value);
+  el.style.width = Math.max(34, Math.min(72, chars + 2)) + 'ch';
+  const count = document.getElementById('f_secretCount');
+  if (!count) return;
+  count.textContent = chars + ' 字';
+  count.classList.toggle('over', bytes > SECRET_MAX_BYTES);
+  count.title = bytes + ' / ' + SECRET_MAX_BYTES + ' 字节';
+}
+function loadSecretFile(input){
+  const file = input.files && input.files[0];
+  input.value = '';
+  if (!file) return;
+  if (!/\.key$/i.test(file.name)) { showToast('请选择 .key 文件', 'error'); return; }
+  if (file.size > SECRET_MAX_BYTES) { showToast('密钥文件不能超过 2KB', 'error'); return; }
+  const reader = new FileReader();
+  reader.onload = () => {
+    const text = String(reader.result || '').replace(/^\uFEFF/, '').trim();
+    if (secretByteLength(text) > SECRET_MAX_BYTES) { showToast('密钥不能超过 2KB', 'error'); return; }
+    const el = document.getElementById('f_secret');
+    if (!el) return;
+    el.value = text;
+    fitSecretField(el);
+    showToast('已读入密钥 ' + text.length + ' 字', 'success');
+  };
+  reader.onerror = () => showToast('密钥文件读取失败', 'error');
+  reader.readAsText(file);
+}
 
 let sortKey = null, sortDesc = false, page = 1, pageSize = 20, editingId = null;
 
@@ -1195,7 +1236,7 @@ let anchorCell = null; // Shift范围选的起始单元格
 
 function toggleRow(id, checked){
   const record = _recordsCache.find(r => String(r.id) === String(id));
-  if (record && record.status === '已结算') return;
+  if (record && isLockedStatus(record.status)) return;
   if (checked) selectedRows.add(String(id)); else selectedRows.delete(String(id));
   updateSelBar();
   const row = Array.from(document.querySelectorAll('#tbody tr[data-id]')).find(el => el.dataset.id === String(id));
@@ -1203,7 +1244,7 @@ function toggleRow(id, checked){
 }
 function toggleCurrentPageRows(checked){
   currentPageList.forEach(r => {
-    if (r.status === '已结算') return;
+    if (isLockedStatus(r.status)) return;
     checked ? selectedRows.add(String(r.id)) : selectedRows.delete(String(r.id));
   });
   renderBody();
@@ -1224,10 +1265,10 @@ function renderBody(){
     document.getElementById('tbody').innerHTML = '<tr class="empty"><td colspan="'+allCols.length+'">没有匹配的记录</td></tr>';
   } else {
     document.getElementById('tbody').innerHTML = pageList.map((r, rowIdx) => {
-      const locked = r.status === '已结算';
+      const locked = isLockedStatus(r.status);
       return `<tr data-id="${esc(r.id)}" class="${selectedRows.has(String(r.id)) ? 'row-selected' : ''}">` + allCols.map((c, colIdx) => {
         if (c.type === 'select') {
-          return `<td><input type="checkbox" ${locked ? 'disabled title="已结算记录不可修改"' : ''} ${selectedRows.has(String(r.id)) ? 'checked' : ''} onclick="event.stopPropagation()" onchange="toggleRow('${esc(r.id)}',this.checked)"></td>`;
+          return `<td><input type="checkbox" ${locked ? 'disabled title="已锁定，不可修改"' : ''} ${selectedRows.has(String(r.id)) ? 'checked' : ''} onclick="event.stopPropagation()" onchange="toggleRow('${esc(r.id)}',this.checked)"></td>`;
         }
         if (c.type === 'op') {
           return '<td><div class="row-ops">' +
@@ -1265,7 +1306,7 @@ function statusCellHtml(r, locked){
   const reason = (r.status === '备案驳回' && r.rejectReason)
     ? `<div class="reject-reason" title="${esc(r.rejectReason)}">${esc(r.rejectReason)}</div>` : '';
   if (locked) {
-    return `<div class="status-cell"><span class="tag tag-status-已结算">已结算</span></div>`;
+    return `<div class="status-cell"><span class="tag tag-status-${esc(r.status)}">${esc(r.status)}</span></div>`;
   }
   return `<div class="status-cell"><select class="inline-status" onclick="event.stopPropagation()" onchange="quickUpdateStatus('${esc(r.id)}',this.value,this)">${STATUS_LIST.map(s => `<option value="${esc(s)}" ${s===r.status?'selected':''}>${esc(s)}</option>`).join('')}</select>${reason}</div>`;
 }
@@ -1281,6 +1322,8 @@ function programFormItemHtml(c, val, record){
   } else if (f.type === 'date') {
     const dv = val ? String(val).split(' ')[0] : '';
     input = `<input type="date" id="f_${c.key}" value="${esc(dv)}">`;
+  } else if (f.type === 'secret') {
+    input = `<div class="secret-field"><input type="text" id="f_${c.key}" class="secret-input" value="${esc(val || '')}" placeholder="粘贴密钥，如 38a1a63d44a3eff8bafe0787e07023b1" spellcheck="false" autocomplete="off" oninput="fitSecretField(this)"><button type="button" class="btn ghost sm" onclick="document.getElementById('secretFile').click()">上传.key</button><input type="file" id="secretFile" accept=".key,text/plain" style="display:none;" onchange="loadSecretFile(this)"></div><div class="secret-meta"><span class="secret-count" id="f_secretCount">0 字</span><span class="form-hint">32 位密钥直接粘贴更方便，.key 不超过 2KB</span></div>`;
   } else if (f.type === 'textarea') {
     input = `<textarea id="f_${c.key}">${esc(val || '')}</textarea>`;
   } else if (c.key === 'avatarUrl') {
@@ -1364,6 +1407,8 @@ function bindProgramFormExtras(record){
     companyEl.addEventListener('change', () => fillLegalFromCompany(record));
     if (!record) fillLegalFromCompany(null);
   }
+  const secretEl = document.getElementById('f_secret');
+  if (secretEl) fitSecretField(secretEl);
 }
 
 let _rejectReasonResolver = null;
@@ -1391,7 +1436,7 @@ function confirmRejectReason(){
 function applyLegalToCache(saved){
   if (!saved || !saved.companyName) return;
   _recordsCache = _recordsCache.map(r => {
-    if (r.companyName !== saved.companyName || r.status === '已结算') return r;
+    if (r.companyName !== saved.companyName || isLockedStatus(r.status)) return r;
     return Object.assign({}, r, {
       legalPersonName: saved.legalPersonName || '',
       legalPersonPhone: saved.legalPersonPhone || '',
@@ -1468,6 +1513,10 @@ async function saveRecord(){
   if (!editingId && !data.email) {
     const available = getUnusedEmails();
     if (available.length) data.email = available[0].email;
+  }
+  if (secretByteLength(data.secret || '') > SECRET_MAX_BYTES) {
+    showToast('密钥不能超过 2KB', 'error');
+    return;
   }
   if (!data.status) data.status = DEFAULT_STATUS;
   // 提交时间由状态决定：只有备案中写入当天，其他状态一律清空
@@ -1904,14 +1953,15 @@ function renderMonthlyStats(all, now){
   const previousMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
   const previousLabel = `${previousMonth.getFullYear()}年${previousMonth.getMonth() + 1}月`;
   const currentLabel = `${now.getFullYear()}年${now.getMonth() + 1}月`;
-  const completedStatuses = new Set(['备案完成', '已结算']);
+  const completedStatuses = new Set(['备案完成', '已验收', '已结算', '已结算三方']);
+  const settledStatuses = new Set(['已结算', '已结算三方']);
   const lastCompleted = all.filter(r =>
     completedStatuses.has(r.status) && isSameMonth(r.completionTime, previousMonth)
   );
   const lastSettled = lastCompleted.filter(r => {
     const completed = String(r.completionTime || '').trim();
     const settled = String(r.settlementTime || '').trim();
-    return r.status === '已结算' && settled && settled >= completed;
+    return settledStatuses.has(r.status) && settled && settled >= completed;
   });
   const currentCompleted = all.filter(r =>
     completedStatuses.has(r.status) && isSameMonth(r.completionTime, now)
@@ -1978,7 +2028,7 @@ function renderDashboard(){
     </div>`).join('') || '<div class="muted" style="font-size:12px;">暂无数据</div>';
 
   // 状态分布
-  const statusColors = { '待注册':'#f56c6c', '待审核':'#e6a23c', '备案中':'#409eff', '备案驳回':'#c41d7f', '备案完成':'#13c2c2', '已结算':'#909399' };
+  const statusColors = { '待注册':'#f56c6c', '待审核':'#e6a23c', '备案中':'#409eff', '备案驳回':'#c41d7f', '备案完成':'#13c2c2', '已验收':'#67c23a', '已结算':'#909399', '已结算三方':'#3f51b5' };
   let statusHtml = STATUS_LIST.map(s => {
     const count = byStatus[s];
     const pct = total ? (count/total*100).toFixed(1) : 0;

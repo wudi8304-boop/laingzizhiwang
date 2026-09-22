@@ -47,7 +47,7 @@ CREATE TABLE IF NOT EXISTS programs (
 CREATE INDEX IF NOT EXISTS idx_programs_company ON programs(company_name);
 CREATE INDEX IF NOT EXISTS idx_programs_name ON programs(mini_program_name);
 CREATE TRIGGER IF NOT EXISTS prevent_settled_program_update
-BEFORE UPDATE ON programs WHEN OLD.status='已结算'
+BEFORE UPDATE ON programs WHEN OLD.status IN ('已结算','已结算三方')
 BEGIN
  SELECT RAISE(ABORT, '已结算的小程序不允许修改');
 END;
@@ -192,7 +192,7 @@ class Database:
                 """UPDATE programs SET legal_person_name=(
                      SELECT c.legal_person_name FROM companies c WHERE c.id=programs.company_id
                    )
-                   WHERE status<>'已结算' AND trim(legal_person_name)='' AND company_id IS NOT NULL
+                   WHERE status NOT IN ('已结算','已结算三方') AND trim(legal_person_name)='' AND company_id IS NOT NULL
                      AND EXISTS (
                        SELECT 1 FROM companies c
                        WHERE c.id=programs.company_id AND trim(c.legal_person_name)<>''
@@ -202,7 +202,7 @@ class Database:
                 """UPDATE programs SET legal_person_phone=(
                      SELECT c.legal_person_phone FROM companies c WHERE c.id=programs.company_id
                    )
-                   WHERE status<>'已结算' AND trim(legal_person_phone)='' AND company_id IS NOT NULL
+                   WHERE status NOT IN ('已结算','已结算三方') AND trim(legal_person_phone)='' AND company_id IS NOT NULL
                      AND EXISTS (
                        SELECT 1 FROM companies c
                        WHERE c.id=programs.company_id AND trim(c.legal_person_phone)<>''
@@ -219,9 +219,16 @@ class Database:
                     ("备案中", "审核中"),
                     ("备案完成", "审核通过"),
                     ("备案完成", "待验收"),
-                    ("已结算", "已验收"),
                     ("待注册", ""),
                 ],
+            )
+            conn.execute("DROP TRIGGER IF EXISTS prevent_settled_program_update")
+            conn.execute(
+                """CREATE TRIGGER prevent_settled_program_update
+                   BEFORE UPDATE ON programs WHEN OLD.status IN ('已结算','已结算三方')
+                   BEGIN
+                     SELECT RAISE(ABORT, '已结算的小程序不允许修改');
+                   END"""
             )
 
     @contextmanager
