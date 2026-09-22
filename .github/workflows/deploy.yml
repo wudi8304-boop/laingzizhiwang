@@ -23,6 +23,5 @@ jobs:
           port: ${{ secrets.DEPLOY_PORT }}
           fingerprint: ${{ secrets.DEPLOY_HOST_FINGERPRINT }}
           command_timeout: 10m
-          script_stop: true
           script: |
-            sudo /www/laingzizhiwang/server/update.sh
+            sudo /usr/bin/bash /www/laingzizhiwang/server/update.sh
