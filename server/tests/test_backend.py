@@ -1,3 +1,4 @@
+import base64
 import json
 import os
 import shutil
@@ -208,36 +209,52 @@ class BackendTest(unittest.TestCase):
         self.assertEqual("已验收", created["status"])
         self.assertEqual(sample, created["secret"])
         self.assertEqual("2026-07-01 09:00:00", created["completionTime"])
+        self.assertEqual("2026-07-01 09:00:00", created["acceptanceTime"])
         self.assertEqual("", created["settlementTime"])
         kept = service.update("acc", {"description": "补充"})
         self.assertEqual("已验收", kept["status"])
         self.assertEqual("2026-07-01 09:00:00", kept["completionTime"])
+        self.assertEqual("2026-07-01 09:00:00", kept["acceptanceTime"])
         cleared = service.update("acc", {"status": "待审核"})
         self.assertEqual("", cleared["completionTime"])
+        self.assertEqual("", cleared["acceptanceTime"])
         with patch("services.programs.now", return_value="2026-07-02 09:00:00"):
             accepted = service.update("acc", {"status": "备案完成"})
         self.assertEqual("2026-07-02 09:00:00", accepted["completionTime"])
+        self.assertEqual("", accepted["acceptanceTime"])
         with patch("services.programs.now", return_value="2026-07-03 09:00:00"):
             still = service.update("acc", {"status": "已验收", "secret": sample})
         self.assertEqual("2026-07-02 09:00:00", still["completionTime"])
+        self.assertEqual("2026-07-03 09:00:00", still["acceptanceTime"])
         self.assertEqual("", still["settlementTime"])
         with patch("services.programs.now", return_value="2026-08-01 09:00:00"):
             third = service.update("acc", {"status": "已结算三方"})
         self.assertEqual("已结算三方", third["status"])
         self.assertEqual("2026-07-02 09:00:00", third["completionTime"])
+        self.assertEqual("2026-07-03 09:00:00", third["acceptanceTime"])
         self.assertEqual("2026-08-01 09:00:00", third["settlementTime"])
         with self.assertRaises(ValueError):
             service.update("acc", {"category": "工具"})
-        with self.assertRaisesRegex(ValueError, "2KB"):
+        with self.assertRaisesRegex(ValueError, "32"):
             service.create({
                 "id": "big", "companyName": "甲", "miniProgramName": "大密钥",
-                "secret": "a" * 2049,
+                "secret": "a" * 33,
             })
+        raw = b"k" * 2048
         exact = service.create({
             "id": "edge", "companyName": "甲", "miniProgramName": "边界",
-            "secret": "b" * 2048,
+            "secret": sample,
+            "uploadKey": base64.b64encode(raw).decode("ascii"),
+            "uploadKeyName": "code.key",
         })
-        self.assertEqual(2048, len(exact["secret"]))
+        self.assertEqual(sample, exact["secret"])
+        self.assertEqual(2048, len(base64.b64decode(exact["uploadKey"])))
+        self.assertEqual("code.key", exact["uploadKeyName"])
+        with self.assertRaisesRegex(ValueError, "2KB"):
+            service.create({
+                "id": "huge", "companyName": "甲", "miniProgramName": "超限",
+                "uploadKey": base64.b64encode(b"k" * 2049).decode("ascii"),
+            })
 
     def test_existing_database_adds_milestone_columns_and_lock(self):
         path = os.path.join(self.tmp, "legacy.db")
@@ -268,8 +285,8 @@ class BackendTest(unittest.TestCase):
         with legacy.connect() as upgraded:
             columns = {row["name"] for row in upgraded.execute("PRAGMA table_info(programs)")}
             self.assertTrue({
-                "completed_at", "settled_at", "legal_person_name", "legal_person_phone",
-                "mini_program_phone", "reject_reason",
+                "completed_at", "accepted_at", "settled_at", "legal_person_name", "legal_person_phone",
+                "mini_program_phone", "reject_reason", "upload_key", "upload_key_name",
             } <= columns)
             company_columns = {row["name"] for row in upgraded.execute("PRAGMA table_info(companies)")}
             self.assertTrue({"legal_person_name", "legal_person_phone"} <= company_columns)
@@ -281,6 +298,29 @@ class BackendTest(unittest.TestCase):
                 """SELECT COUNT(*) n FROM sqlite_master
                    WHERE type='trigger' AND name='prevent_settled_program_update'"""
             ).fetchone()["n"])
+
+
+    def test_pasted_key_file_is_split_from_secret(self):
+        pem = "-----BEGIN PRIVATE KEY-----" + chr(10) + "abc" + chr(10) + "-----END PRIVATE KEY-----" + chr(10)
+        plain = "38a1a63d44a3eff8bafe0787e07023b1"
+        stamp = now()
+        with self.db.connect() as conn:
+            conn.execute(
+                """INSERT INTO programs(
+                   id,company_name,mini_program_name,status,secret,created_at,updated_at
+                   ) VALUES('pem1','甲','密钥文件','待注册',?,?,?),
+                            ('sec1','甲','正常密钥','待注册',?,?,?)""",
+                (pem, stamp, stamp, plain, stamp, stamp),
+            )
+        self.db.initialize()
+        service = ProgramService(self.db)
+        moved = service.get("pem1")
+        kept = service.get("sec1")
+        self.assertEqual("", moved["secret"])
+        self.assertEqual(base64.b64encode(pem.encode("utf-8")).decode("ascii"), moved["uploadKey"])
+        self.assertEqual("upload.key", moved["uploadKeyName"])
+        self.assertEqual(plain, kept["secret"])
+        self.assertEqual("", kept["uploadKey"])
 
     def test_milestone_times_use_latest_status_transition(self):
         service = ProgramService(self.db)

@@ -285,26 +285,21 @@
         <div class="help-tip" style="margin-top:10px;margin-bottom:0;">时间统计从本功能上线后开始，历史空时间不计入。</div>
       </div>
       <div class="stats" id="dashboardStats"></div>
-      <div class="stats" id="exceptionStats"></div>
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px;">
-        <div class="section" style="margin-bottom:0;">
-          <h2>🏢 公司分布 <span class="desc">按公司统计数量</span></h2>
-          <div id="companyDist"></div>
-        </div>
-        <div class="section" style="margin-bottom:0;">
-          <h2>📊 状态分布 <span class="desc">按状态统计数量</span></h2>
-          <div id="statusDist"></div>
-        </div>
+      <div class="section">
+        <h2>本月审核通过 <span class="desc">备案完成时间在本月，点击数量查看明细</span></h2>
+        <div class="stats" id="approvedMonthStats" style="margin-bottom:12px;"></div>
+        <h2>公司分布 <span class="desc">按本月审核通过的公司统计</span></h2>
+        <div id="approvedCompanyDist"></div>
       </div>
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px;">
-        <div class="section" style="margin-bottom:0;border-left:3px solid var(--warning);">
-          <h2 style="color:var(--warning);">⏰ 本周预计备案完成 <span class="desc">提交时间+8天落本周</span></h2>
-          <div id="expectedWeek"></div>
-        </div>
-        <div class="section" style="margin-bottom:0;border-left:3px solid var(--danger);">
-          <h2 style="color:var(--danger);">⚠️ 待处理事项 <span class="desc">需关注的项</span></h2>
-          <div id="todoItems"></div>
-        </div>
+      <div class="section">
+        <h2>本月验收 <span class="desc">进入已验收及之后状态的时间在本月，点击数量查看明细</span></h2>
+        <div class="stats" id="acceptedMonthStats" style="margin-bottom:12px;"></div>
+        <h2>公司分布 <span class="desc">按本月验收的公司统计</span></h2>
+        <div id="acceptedCompanyDist"></div>
+      </div>
+      <div class="section">
+        <h2>已结算三方 <span class="desc">点击数量查看明细</span></h2>
+        <div class="stats" id="thirdPartyStats" style="margin-bottom:0;"></div>
       </div>
       <div class="section">
         <h2>🕒 最近提交 <span class="desc">最新 10 条记录</span></h2>
@@ -586,7 +581,7 @@
     <div class="modal-body">
       <div class="table-wrap" style="box-shadow:none;max-height:520px;overflow:auto;">
         <table style="min-width:720px;font-size:12px;">
-          <thead><tr><th>公司</th><th>小程序名称</th><th>状态</th><th>备案完成时间</th><th>结算时间</th></tr></thead>
+          <thead><tr><th>公司</th><th>小程序名称</th><th>状态</th><th>备案完成时间</th><th>验收时间</th><th>结算时间</th></tr></thead>
           <tbody id="monthlyDetailBody"></tbody>
         </table>
       </div>
@@ -713,6 +708,7 @@ const COLS = [
   { key: 'appid', label: 'AppID', type: 'copy', sortable: true, form: { type: 'text' } },
   { key: 'originalId', label: '原始ID', type: 'copy', form: { type: 'text' } },
   { key: 'secret', label: '密钥', type: 'copy', form: { type: 'secret' } },
+  { key: 'uploadKey', label: 'Key文件', type: 'keyfile', form: { type: 'keyfile' } },
   { key: 'admin', label: '管理员', sortable: true, form: { type: 'text' } },
   { key: 'legalPersonName', label: '法人姓名', sortable: true, form: { type: 'text' } },
   { key: 'legalPersonPhone', label: '法人手机号', type: 'mono', sortable: true, form: { type: 'text' } },
@@ -729,38 +725,76 @@ const OP_COL = { key: '_op', label: '操作', type: 'op' };
 const STATUS_ORDER = { '待注册': 0, '待审核': 1, '备案驳回': 2, '备案中': 3, '备案完成': 4, '已验收': 5, '已结算': 6, '已结算三方': 7 };
 function getStatusOrder(s){ return STATUS_ORDER[s] != null ? STATUS_ORDER[s] : 99; }
 function isLockedStatus(status){ return status === '已结算' || status === '已结算三方'; }
-const SECRET_MAX_BYTES = 2048;
-function secretByteLength(text){ return new TextEncoder().encode(text || '').length; }
+const UPLOAD_KEY_MAX_BYTES = 2048;
 function fitSecretField(el){
   if (!el) return;
   const value = el.value || '';
   const chars = value.length;
-  const bytes = secretByteLength(value);
-  el.style.width = Math.max(34, Math.min(72, chars + 2)) + 'ch';
+  el.style.width = Math.max(34, Math.min(40, chars + 2)) + 'ch';
   const count = document.getElementById('f_secretCount');
   if (!count) return;
   count.textContent = chars + ' 字';
-  count.classList.toggle('over', bytes > SECRET_MAX_BYTES);
-  count.title = bytes + ' / ' + SECRET_MAX_BYTES + ' 字节';
+  count.classList.toggle('over', chars !== 0 && chars !== 32);
+  count.title = '固定 32 位';
 }
-function loadSecretFile(input){
+function bytesToBase64(bytes){
+  let binary = '';
+  for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i]);
+  return btoa(binary);
+}
+function loadUploadKeyFile(input){
   const file = input.files && input.files[0];
   input.value = '';
   if (!file) return;
   if (!/\.key$/i.test(file.name)) { showToast('请选择 .key 文件', 'error'); return; }
-  if (file.size > SECRET_MAX_BYTES) { showToast('密钥文件不能超过 2KB', 'error'); return; }
+  if (file.size > UPLOAD_KEY_MAX_BYTES) { showToast('key 文件不能超过 2KB', 'error'); return; }
   const reader = new FileReader();
   reader.onload = () => {
-    const text = String(reader.result || '').replace(/^\uFEFF/, '').trim();
-    if (secretByteLength(text) > SECRET_MAX_BYTES) { showToast('密钥不能超过 2KB', 'error'); return; }
-    const el = document.getElementById('f_secret');
-    if (!el) return;
-    el.value = text;
-    fitSecretField(el);
-    showToast('已读入密钥 ' + text.length + ' 字', 'success');
+    const encoded = bytesToBase64(new Uint8Array(reader.result));
+    const valueEl = document.getElementById('f_uploadKey');
+    const nameEl = document.getElementById('f_uploadKeyName');
+    if (valueEl) valueEl.value = encoded;
+    if (nameEl) nameEl.value = file.name;
+    const name = document.getElementById('keyFileName');
+    if (name) name.textContent = file.name;
+    const download = document.getElementById('keyFileDownload');
+    if (download) download.disabled = false;
+    showToast('已选择 ' + file.name, 'success');
   };
-  reader.onerror = () => showToast('密钥文件读取失败', 'error');
-  reader.readAsText(file);
+  reader.onerror = () => showToast('key 文件读取失败', 'error');
+  reader.readAsArrayBuffer(file);
+}
+function clearUploadKey(){
+  const valueEl = document.getElementById('f_uploadKey');
+  const nameEl = document.getElementById('f_uploadKeyName');
+  if (valueEl) valueEl.value = '';
+  if (nameEl) nameEl.value = '';
+  const name = document.getElementById('keyFileName');
+  if (name) name.textContent = '未上传';
+  const download = document.getElementById('keyFileDownload');
+  if (download) download.disabled = true;
+}
+function downloadNamedKey(encoded, filename){
+  if (!encoded) { showToast('没有 key 文件', 'error'); return; }
+  const binary = atob(encoded);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+  const blob = new Blob([bytes], { type: 'application/octet-stream' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = filename || 'upload.key';
+  a.click();
+  URL.revokeObjectURL(a.href);
+}
+function downloadUploadKey(id){
+  const record = getAllRecords().find(r => String(r.id) === String(id));
+  if (!record) return;
+  downloadNamedKey(record.uploadKey, record.uploadKeyName || ((record.appid || 'upload') + '.key'));
+}
+function downloadUploadKeyFromForm(){
+  const valueEl = document.getElementById('f_uploadKey');
+  const nameEl = document.getElementById('f_uploadKeyName');
+  downloadNamedKey(valueEl && valueEl.value, (nameEl && nameEl.value) || 'upload.key');
 }
 
 let sortKey = null, sortDesc = false, page = 1, pageSize = 20, editingId = null;
@@ -1021,7 +1055,10 @@ function clipWriteFallback(text, onOk){
 // 复制整列数据（跨页，按当前筛选条件取全部记录）
 function copyColumn(key, el){
   const list = getFiltered();
-  const values = list.map(r => r[key] != null ? String(r[key]) : '').filter(v => v !== '');
+  const values = list.map(r => {
+    if (key === 'uploadKey') return r.uploadKey ? (r.uploadKeyName || 'upload.key') : '';
+    return r[key] != null ? String(r[key]) : '';
+  }).filter(v => v !== '');
   if (values.length === 0) { showToast('该列无数据', 'error'); return; }
   const text = values.join('\n');
   clipWrite(text, function(){
@@ -1278,9 +1315,11 @@ function renderBody(){
         }
         const v = r[c.key];
         const display = c.type === 'avatar' ? avatarHtml(v, false, r.id) :
-          ((c.type === 'status')
+          (c.type === 'keyfile'
+            ? (v ? `<button class="btn ghost sm" onclick="event.stopPropagation();downloadUploadKey('${esc(r.id)}')">下载</button>` : '<span class="muted">—</span>')
+            : ((c.type === 'status')
             ? statusCellHtml(r, locked)
-            : ((v == null || v === '') ? '<span class="muted">—</span>' : esc(v)));
+            : ((v == null || v === '') ? '<span class="muted">—</span>' : esc(v))));
         const cellColIdx = colIdx - 1;
         return `<td class="cell" data-r="${rowIdx}" data-c="${cellColIdx}" data-key="${c.key}" onclick="cellClick(event,${rowIdx},${cellColIdx})">${display}</td>`;
       }).join('') + '</tr>';
@@ -1323,7 +1362,10 @@ function programFormItemHtml(c, val, record){
     const dv = val ? String(val).split(' ')[0] : '';
     input = `<input type="date" id="f_${c.key}" value="${esc(dv)}">`;
   } else if (f.type === 'secret') {
-    input = `<div class="secret-field"><input type="text" id="f_${c.key}" class="secret-input" value="${esc(val || '')}" placeholder="粘贴密钥，如 38a1a63d44a3eff8bafe0787e07023b1" spellcheck="false" autocomplete="off" oninput="fitSecretField(this)"><button type="button" class="btn ghost sm" onclick="document.getElementById('secretFile').click()">上传.key</button><input type="file" id="secretFile" accept=".key,text/plain" style="display:none;" onchange="loadSecretFile(this)"></div><div class="secret-meta"><span class="secret-count" id="f_secretCount">0 字</span><span class="form-hint">32 位密钥直接粘贴更方便，.key 不超过 2KB</span></div>`;
+    input = `<div class="secret-field"><input type="text" id="f_${c.key}" class="secret-input" maxlength="32" value="${esc(val || '')}" placeholder="32 位密钥，如 38a1a63d44a3eff8bafe0787e07023b1" spellcheck="false" autocomplete="off" oninput="fitSecretField(this)"></div><div class="secret-meta"><span class="secret-count" id="f_secretCount">0 字</span><span class="form-hint">AppSecret，固定 32 位，和上传代码的 key 文件不是一回事</span></div>`;
+  } else if (f.type === 'keyfile') {
+    const savedName = (record && record.uploadKeyName) || '';
+    input = `<div class="secret-field"><button type="button" class="btn ghost sm" onclick="document.getElementById('keyFileInput').click()">上传.key</button><input type="file" id="keyFileInput" accept=".key,application/octet-stream" style="display:none;" onchange="loadUploadKeyFile(this)"><button type="button" class="btn ghost sm" id="keyFileDownload" onclick="downloadUploadKeyFromForm()" ${val ? '' : 'disabled'}>下载</button><button type="button" class="btn ghost sm" onclick="clearUploadKey()">清除</button><span class="secret-count" id="keyFileName">${esc(savedName || (val ? '已上传' : '未上传'))}</span></div><input type="hidden" id="f_uploadKey" value="${esc(val || '')}"><input type="hidden" id="f_uploadKeyName" value="${esc(savedName)}"><div class="form-hint">上传代码用的 .key 文件，不超过 2KB，可下载</div>`;
   } else if (f.type === 'textarea') {
     input = `<textarea id="f_${c.key}">${esc(val || '')}</textarea>`;
   } else if (c.key === 'avatarUrl') {
@@ -1514,8 +1556,10 @@ async function saveRecord(){
     const available = getUnusedEmails();
     if (available.length) data.email = available[0].email;
   }
-  if (secretByteLength(data.secret || '') > SECRET_MAX_BYTES) {
-    showToast('密钥不能超过 2KB', 'error');
+  const keyNameEl = document.getElementById('f_uploadKeyName');
+  if (keyNameEl) data.uploadKeyName = keyNameEl.value.trim();
+  if (data.secret && String(data.secret).length !== 32) {
+    showToast('密钥必须是 32 位', 'error');
     return;
   }
   if (!data.status) data.status = DEFAULT_STATUS;
@@ -1982,16 +2026,23 @@ function openMonthlyDetails(key){
   const titles = {
     lastCompleted: '上月备案完成明细',
     lastSettled: '上月备案批次已结算明细',
-    currentCompleted: '本月备案完成明细'
+    currentCompleted: '本月备案完成明细',
+    currentApproved: '本月审核通过明细',
+    currentAccepted: '本月验收明细',
+    thirdPartySettled: '已结算三方明细'
   };
+  const timeKey = key === 'currentAccepted' ? 'acceptanceTime'
+    : ((key === 'thirdPartySettled' || key === 'lastSettled') ? 'settlementTime' : 'completionTime');
   const rows = (_monthlyMetricLists[key] || []).slice().sort((a, b) =>
-    String(b.completionTime || '').localeCompare(String(a.completionTime || '')));
+    String(b[timeKey] || '').localeCompare(String(a[timeKey] || '')));
   document.getElementById('monthlyDetailTitle').textContent = `${titles[key] || '月度明细'}（${rows.length}）`;
   document.getElementById('monthlyDetailBody').innerHTML = rows.length ? rows.map(r => `<tr>
     <td>${esc(r.companyName || '')}</td><td>${esc(r.miniProgramName || '(未命名)')}</td>
     <td><span class="tag">${esc(r.status || '—')}</span></td>
-    <td class="mono">${esc(r.completionTime || '—')}</td><td class="mono">${esc(r.settlementTime || '—')}</td>
-  </tr>`).join('') : '<tr class="empty"><td colspan="5">暂无符合条件的记录</td></tr>';
+    <td class="mono">${esc(r.completionTime || '—')}</td>
+    <td class="mono">${esc(r.acceptanceTime || '—')}</td>
+    <td class="mono">${esc(r.settlementTime || '—')}</td>
+  </tr>`).join('') : '<tr class="empty"><td colspan="6">暂无符合条件的记录</td></tr>';
   document.getElementById('monthlyDetailModal').classList.add('show');
 }
 
@@ -1999,6 +2050,22 @@ function closeMonthlyDetails(){
   document.getElementById('monthlyDetailModal').classList.remove('show');
 }
 
+function companyDistHtml(records, color){
+  const companyCount = {};
+  records.forEach(r => { const c = r.companyName || '(未填)'; companyCount[c] = (companyCount[c] || 0) + 1; });
+  const entries = Object.entries(companyCount).sort((a, b) => b[1] - a[1]);
+  const maxCompany = Math.max(...entries.map(e => e[1]), 1);
+  return entries.map(([name, count]) => `
+    <div style="margin-bottom:8px;">
+      <div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:3px;"><span>${esc(name)}</span><span style="color:var(--text-3);">${count}</span></div>
+      <div style="height:6px;background:#f0f2f5;border-radius:3px;overflow:hidden;"><div style="height:100%;width:${count / maxCompany * 100}%;background:${color};border-radius:3px;"></div></div>
+    </div>`).join('') || '<div class="muted" style="font-size:12px;">暂无数据</div>';
+}
+function monthMetricCard(key, count, label, color){
+  return `<div class="stat-card status-card clickable" onclick="openMonthlyDetails('${key}')" style="border-left:3px solid ${color};">
+    <div class="num" style="color:${color};">${count}</div><div class="label">${label}</div>
+  </div>`;
+}
 function renderDashboard(){
   const all = getAllRecords();
   const total = all.length;
@@ -2009,65 +2076,26 @@ function renderDashboard(){
   const byStatus = {};
   STATUS_LIST.forEach(s => byStatus[s] = 0);
   all.forEach(r => { if (r.status && byStatus.hasOwnProperty(r.status)) byStatus[r.status]++; });
-  const weekExpected = calcExpectedThisWeek(all, now);
-
   let statsHtml = `<div class="stat-card"><div class="num">${total}</div><div class="label">总记录</div></div>`;
-  statsHtml += `<div class="stat-card status-card" style="border-left:3px solid var(--warning);"><div class="num" style="color:var(--warning);">${weekExpected.length}</div><div class="label">本周预计备案完成</div></div>`;
   STATUS_LIST.forEach(s => { statsHtml += `<div class="stat-card status-card"><div class="num">${byStatus[s]}</div><div class="label">${s}</div></div>`; });
   document.getElementById('dashboardStats').innerHTML = statsHtml;
 
-  // 公司分布
-  const companyCount = {};
-  all.forEach(r => { const c = r.companyName || '(未填)'; companyCount[c] = (companyCount[c]||0)+1; });
-  const companyEntries = Object.entries(companyCount).sort((a,b) => b[1]-a[1]);
-  const maxCompany = Math.max(...companyEntries.map(e=>e[1]), 1);
-  document.getElementById('companyDist').innerHTML = companyEntries.map(([name, count]) => `
-    <div style="margin-bottom:8px;">
-      <div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:3px;"><span>${esc(name)}</span><span style="color:var(--text-3);">${count}</span></div>
-      <div style="height:6px;background:#f0f2f5;border-radius:3px;overflow:hidden;"><div style="height:100%;width:${count/maxCompany*100}%;background:var(--primary);border-radius:3px;"></div></div>
-    </div>`).join('') || '<div class="muted" style="font-size:12px;">暂无数据</div>';
+  const completedStatuses = new Set(['备案完成', '已验收', '已结算', '已结算三方']);
+  const acceptedStatuses = new Set(['已验收', '已结算', '已结算三方']);
+  const approved = all.filter(r => completedStatuses.has(r.status) && isSameMonth(r.completionTime, now));
+  const accepted = all.filter(r => acceptedStatuses.has(r.status) && isSameMonth(r.acceptanceTime, now));
+  const thirdParty = all.filter(r => r.status === '已结算三方');
+  _monthlyMetricLists.currentApproved = approved;
+  _monthlyMetricLists.currentAccepted = accepted;
+  _monthlyMetricLists.thirdPartySettled = thirdParty;
+  document.getElementById('approvedMonthStats').innerHTML = monthMetricCard('currentApproved', approved.length, '本月审核通过', 'var(--primary)');
+  document.getElementById('approvedCompanyDist').innerHTML = companyDistHtml(approved, 'var(--primary)');
+  document.getElementById('acceptedMonthStats').innerHTML = monthMetricCard('currentAccepted', accepted.length, '本月验收', 'var(--success)');
+  document.getElementById('acceptedCompanyDist').innerHTML = companyDistHtml(accepted, 'var(--success)');
+  document.getElementById('thirdPartyStats').innerHTML = monthMetricCard('thirdPartySettled', thirdParty.length, '已结算三方', '#3f51b5');
 
-  // 状态分布
-  const statusColors = { '待注册':'#f56c6c', '待审核':'#e6a23c', '备案中':'#409eff', '备案驳回':'#c41d7f', '备案完成':'#13c2c2', '已验收':'#67c23a', '已结算':'#909399', '已结算三方':'#3f51b5' };
-  let statusHtml = STATUS_LIST.map(s => {
-    const count = byStatus[s];
-    const pct = total ? (count/total*100).toFixed(1) : 0;
-    return `<div style="margin-bottom:8px;">
-      <div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:3px;"><span>${esc(s)}</span><span style="color:var(--text-3);">${count} (${pct}%)</span></div>
-      <div style="height:6px;background:#f0f2f5;border-radius:3px;overflow:hidden;"><div style="height:100%;width:${pct}%;background:${statusColors[s]};border-radius:3px;"></div></div>
-    </div>`;
-  }).join('');
-  document.getElementById('statusDist').innerHTML = statusHtml || '<div class="muted" style="font-size:12px;">暂无数据</div>';
-
-  // 本周预计备案完成明细
-  const sortedWeek = weekExpected.sort((a,b) => new Date(a.submitDate) - new Date(b.submitDate));
-  document.getElementById('expectedWeek').innerHTML = sortedWeek.length ? sortedWeek.map(r => {
-    const submit = new Date(r.submitDate.split(' ')[0]);
-    const expected = new Date(submit); expected.setDate(submit.getDate() + 8);
-    const days = Math.floor((now - submit) / 86400000);
-    return `<div style="display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid #f0f2f5;font-size:12px;">
-      <div><div style="font-weight:500;">${esc(r.miniProgramName||'(未命名)')}</div><div style="color:var(--text-3);font-size:11px;">${esc(r.companyName||'')} · 提交 ${esc(r.submitDate||'')}</div></div>
-      <div style="text-align:right;"><div style="color:var(--warning);font-weight:600;">${days}天</div><div style="color:var(--success);font-size:11px;">预计 ${expected.toLocaleDateString('zh-CN')}</div></div>
-    </div>`;
-  }).join('') : '<div class="muted" style="font-size:12px;">本周无预计备案完成项</div>';
-
-  // 待处理事项
-  const todos = [];
-  const pendingRegister = all.filter(r => r.status === '待注册').length;
-  const pendingReview = all.filter(r => r.status === '待审核').length;
-  const rejected = all.filter(r => r.status === '备案驳回').length;
-  const overdue = all.filter(r => { if (r.status !== '备案中' || !r.submitDate) return false; const s = new Date(r.submitDate.split(' ')[0]); return !isNaN(s) && (now - s) / 86400000 >= 8; }).length;
-  if (pendingRegister > 0) todos.push({ icon:'🔐', text:`待注册 ${pendingRegister} 个`, color:'var(--primary)', status:'待注册' });
-  if (pendingReview > 0) todos.push({ icon:'📝', text:`待审核 ${pendingReview} 个`, color:'var(--warning)', status:'待审核' });
-  if (rejected > 0) todos.push({ icon:'🚫', text:`备案驳回 ${rejected} 个`, color:'#c41d7f', status:'备案驳回' });
-  if (overdue > 0) todos.push({ icon:'⏰', text:`备案中超 8 天 ${overdue} 个`, color:'var(--danger)', status:'备案中' });
-  document.getElementById('todoItems').innerHTML = todos.length ? todos.map(t => `<div class="clickable" onclick="openStatusFilter('${esc(t.status)}')" style="display:flex;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid #f0f2f5;font-size:12px;"><span style="font-size:16px;">${t.icon}</span><span style="color:${t.color};">${esc(t.text)}</span></div>`).join('') : '<div class="muted" style="font-size:12px;">✓ 暂无待处理事项</div>';
-
-  // 最近提交
   const recent = all.filter(r => r.submitDate).sort((a,b) => new Date(b.submitDate) - new Date(a.submitDate)).slice(0, 10);
   document.getElementById('recentList').innerHTML = recent.length ? recent.map(r => `<tr><td>${esc(r.companyName||'')}</td><td>${esc(r.miniProgramName||'')}</td><td>${r.status ? `<span class="tag tag-status-${esc(r.status)}">${esc(r.status)}</span>` : '<span class="muted">—</span>'}</td><td class="mono">${esc(r.submitDate||'')}</td></tr>`).join('') : '<tr class="empty"><td colspan="4">暂无记录</td></tr>';
-  if (isSuper()) renderExceptionSummary();
-  else document.getElementById('exceptionStats').innerHTML = '';
 }
 
 function openStatusFilter(status){
@@ -2082,13 +2110,15 @@ function pendingInfoPrograms(){
 }
 
 function renderExceptionSummary(){
+  const statsEl = document.getElementById('exceptionStats');
+  if (!statsEl) return;
   const openItems = (_exceptionsCache || []).filter(x => x.status !== 'resolved');
   const open = openItems.length;
   const last = _statusCache && _statusCache.lastRun;
   const exceptionFailures = openItems.filter(x => /同步|检测|失败|error/i.test(String(x.reason || ''))).length;
   const failed = exceptionFailures + (last && (last.status === 'failed' || last.status === 'partial' || Number(last.failure_count) > 0) ? Number(last.failure_count || 1) : 0);
   const pending = pendingInfoPrograms().length;
-  document.getElementById('exceptionStats').innerHTML = [
+  statsEl.innerHTML = [
     ['开放异常', open, 'var(--danger)'],
     ['同步 / 检测失败', failed, 'var(--warning)'],
     ['待补资料', pending, 'var(--primary)']

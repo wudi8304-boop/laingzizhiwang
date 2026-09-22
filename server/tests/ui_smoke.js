@@ -43,6 +43,12 @@ const { chromium } = require("playwright");
     await page.locator("#monthlyStats .stat-card").first().click();
     await page.waitForSelector("#monthlyDetailModal.show", { timeout: 10000 });
     await page.locator("#monthlyDetailModal .close").click();
+    if (await page.locator("#companyDist").count() || await page.locator("#todoItems").count()) {
+      throw new Error("removed dashboard sections are still present");
+    }
+    if (!await page.locator("#approvedCompanyDist").count() || !await page.locator("#thirdPartyStats").count()) {
+      throw new Error("new dashboard sections missing");
+    }
     await page.click('.nav-item[data-page="companies"]');
     await page.waitForSelector("#page-companies.active", { timeout: 10000 });
     const cards = await page.locator("#companyCards .company-card").count();
@@ -60,6 +66,7 @@ const { chromium } = require("playwright");
     if (!headers.some(text => text.includes("法人姓名"))) throw new Error("legal name column missing");
     if (!headers.some(text => text.includes("法人手机号"))) throw new Error("legal phone column missing");
     if (!headers.some(text => text.includes("小程序手机号"))) throw new Error("program phone column missing");
+    if (!headers.some(text => text.includes("Key文件"))) throw new Error("key file column missing");
     if (headers.some(text => text.includes("小程序密码"))) throw new Error("password column should be hidden");
     const lockedStatus = page.locator("#tbody .tag-status-已结算").first();
     if (await lockedStatus.count()) {
@@ -92,6 +99,9 @@ const { chromium } = require("playwright");
       throw new Error("secret count mismatch: " + await page.locator("#f_secretCount").textContent());
     }
     if (await secret.evaluate(el => el.style.width) !== "34ch") throw new Error("secret width was not fitted");
+    if (await page.locator("#secretFile").count()) throw new Error("secret and key file should stay separate");
+    if (!await page.locator("#keyFileInput").count()) throw new Error("key file upload missing");
+    if (!await page.locator("#keyFileDownload").count()) throw new Error("key file download missing");
     await page.locator("#editModal .close").click();
     const avatarImages = await page.locator("#tbody img.avatar-thumb").count();
     await page.locator("#tbody button", { hasText: "编辑" }).first().click();

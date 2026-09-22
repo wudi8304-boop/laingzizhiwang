@@ -1,3 +1,4 @@
+import base64
 import json
 import uuid
 
@@ -6,9 +7,11 @@ from db import now
 
 DEFAULT_STATUS = "待注册"
 COMPLETED_STATUSES = ("备案完成", "已验收", "已结算", "已结算三方")
+ACCEPTED_STATUSES = ("已验收", "已结算", "已结算三方")
 SETTLED_STATUSES = ("已结算", "已结算三方")
 LOCKED_STATUSES = ("已结算", "已结算三方")
-SECRET_MAX_BYTES = 2048
+SECRET_LENGTH = 32
+UPLOAD_KEY_MAX_BYTES = 2048
 STATUS_ALIASES = {
     "": DEFAULT_STATUS,
     "审核中": "备案中",
@@ -18,7 +21,8 @@ STATUS_ALIASES = {
 FIELDS = {
     "companyName": "company_name", "miniProgramName": "mini_program_name",
     "avatarUrl": "avatar_url", "description": "description", "category": "category", "appid": "appid",
-    "originalId": "original_id", "secret": "secret", "admin": "admin",
+    "originalId": "original_id", "secret": "secret",
+    "uploadKey": "upload_key", "uploadKeyName": "upload_key_name", "admin": "admin",
     "legalPersonName": "legal_person_name", "legalPersonPhone": "legal_person_phone",
     "miniProgramPhone": "mini_program_phone", "status": "status",
     "email": "email", "miniProgramPassword": "mini_program_password", "submitDate": "submit_date",
@@ -39,6 +43,7 @@ def external(row):
     for api, col in FIELDS.items():
         result[api] = d.get(col, "")
     result["completionTime"] = d.get("completed_at", "")
+    result["acceptanceTime"] = d.get("accepted_at", "")
     result["settlementTime"] = d.get("settled_at", "")
     result["createdAt"] = d.get("created_at")
     result["updatedAt"] = d.get("updated_at")
@@ -123,12 +128,13 @@ class ProgramService:
     def create(self, data, actor="api"):
         data = dict(data)
         data["status"] = normalize_status(data.get("status"))
-        self._apply_business_rules(data)
+        self._apply_business_rules(data, actor=actor)
         self._normalize_reject_reason(data)
         actor = self._actor(actor)
         program_id = str(data.get("id") or ("rec_" + uuid.uuid4().hex[:12]))
         stamp = now()
         completed_at = stamp if data["status"] in COMPLETED_STATUSES else ""
+        accepted_at = stamp if data["status"] in ACCEPTED_STATUSES else ""
         settled_at = stamp if data["status"] in SETTLED_STATUSES else ""
         with self.db.transaction() as conn:
             if conn.execute("SELECT 1 FROM programs WHERE id=?", (program_id,)).fetchone():
@@ -140,13 +146,13 @@ class ProgramService:
             self._assert_email_available(conn, str(data.get("email") or ""), program_id)
             values = [str(data.get(k) or "") for k in FIELDS]
             columns = ["id", "company_id"] + list(FIELDS.values()) + [
-                "completed_at", "settled_at", "source", "created_at", "updated_at",
+                "completed_at", "accepted_at", "settled_at", "source", "created_at", "updated_at",
             ]
             conn.execute(
                 "INSERT INTO programs(%s) VALUES(%s)" % (
                     ",".join(columns), ",".join("?" * len(columns)),
                 ),
-                [program_id, company_id] + values + [completed_at, settled_at, actor, stamp, stamp],
+                [program_id, company_id] + values + [completed_at, accepted_at, settled_at, actor, stamp, stamp],
             )
             self._ensure_email(conn, str(data.get("email") or ""))
             self._propagate_company_legal(
@@ -171,7 +177,7 @@ class ProgramService:
             raise ValueError("已结算的小程序已锁定，不允许修改")
         actor = self._actor(actor)
         current = external(current_row)
-        self._apply_business_rules(data, current)
+        self._apply_business_rules(data, current, actor)
         self._normalize_reject_reason(data, current)
         updates, args = [], []
         stamp = now()
@@ -191,6 +197,12 @@ class ProgramService:
                     args.append(stamp)
                 elif target_status not in COMPLETED_STATUSES:
                     updates.append("completed_at=?")
+                    args.append("")
+                if target_status in ACCEPTED_STATUSES and current_status not in ACCEPTED_STATUSES:
+                    updates.append("accepted_at=?")
+                    args.append(stamp)
+                elif target_status not in ACCEPTED_STATUSES:
+                    updates.append("accepted_at=?")
                     args.append("")
                 if target_status in SETTLED_STATUSES and current_status not in SETTLED_STATUSES:
                     updates.append("settled_at=?")
@@ -315,13 +327,28 @@ class ProgramService:
         return results
 
     @staticmethod
-    def _apply_business_rules(data, current=None):
+    def _apply_business_rules(data, current=None, actor="api"):
         current = current or {}
-        if "secret" in data:
-            secret = str(data.get("secret") or "")
-            if len(secret.encode("utf-8")) > SECRET_MAX_BYTES:
-                raise ValueError("密钥不能超过 2KB")
+        if "secret" in data and not str(actor).startswith("vendor"):
+            secret = str(data.get("secret") or "").strip()
+            if secret and len(secret) != SECRET_LENGTH:
+                raise ValueError("密钥必须是 32 位")
             data["secret"] = secret
+        if "uploadKey" in data:
+            raw = str(data.get("uploadKey") or "").strip()
+            if raw:
+                try:
+                    decoded = base64.b64decode(raw, validate=True)
+                except Exception:
+                    raise ValueError("key 文件内容无效")
+                if len(decoded) > UPLOAD_KEY_MAX_BYTES:
+                    raise ValueError("key 文件不能超过 2KB")
+            data["uploadKey"] = raw
+        if "uploadKeyName" in data:
+            name = str(data.get("uploadKeyName") or "").strip()
+            if name and not name.lower().endswith(".key"):
+                name += ".key"
+            data["uploadKeyName"] = name
         status = data.get("status", current.get("status", ""))
         if status == "备案中":
             entering = current.get("status") != "备案中"
