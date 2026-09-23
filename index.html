@@ -292,7 +292,7 @@
         <div id="approvedCompanyDist"></div>
       </div>
       <div class="section">
-        <h2>本月验收 <span class="desc">进入已验收及之后状态的时间在本月，点击数量查看明细</span></h2>
+        <h2>本月验收 <span class="desc">状态为已验收，且验收时间在本月，点击数量查看明细</span></h2>
         <div class="stats" id="acceptedMonthStats" style="margin-bottom:12px;"></div>
         <h2>公司分布 <span class="desc">按本月验收的公司统计</span></h2>
         <div id="acceptedCompanyDist"></div>
@@ -2081,9 +2081,8 @@ function renderDashboard(){
   document.getElementById('dashboardStats').innerHTML = statsHtml;
 
   const completedStatuses = new Set(['备案完成', '已验收', '已结算', '已结算三方']);
-  const acceptedStatuses = new Set(['已验收', '已结算', '已结算三方']);
   const approved = all.filter(r => completedStatuses.has(r.status) && isSameMonth(r.completionTime, now));
-  const accepted = all.filter(r => acceptedStatuses.has(r.status) && isSameMonth(r.acceptanceTime, now));
+  const accepted = all.filter(r => r.status === '已验收' && isSameMonth(r.acceptanceTime, now));
   const thirdParty = all.filter(r => r.status === '已结算三方');
   _monthlyMetricLists.currentApproved = approved;
   _monthlyMetricLists.currentAccepted = accepted;
