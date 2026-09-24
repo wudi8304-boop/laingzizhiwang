@@ -803,5 +803,52 @@ class BackendTest(unittest.TestCase):
             self.assertEqual(2, conn.execute("SELECT COUNT(*) n FROM approved_programs").fetchone()["n"])
 
 
+
+    def test_full_company_name_reuses_existing_company_and_status_stays_scoped(self):
+        stamp = now()
+        with self.db.connect() as conn:
+            conn.execute(
+                """INSERT INTO companies(
+                   name,full_name,legal_person_name,legal_person_phone,enabled,created_at,updated_at
+                   ) VALUES('徽希科技','内蒙古徽希科技有限公司','李润梅','13000000000',1,?,?)""",
+                (stamp, stamp),
+            )
+            conn.execute(
+                "INSERT INTO companies(name,full_name,enabled,created_at,updated_at) VALUES('乙公司','乙公司全称',1,?,?)",
+                (stamp, stamp),
+            )
+            company_id = conn.execute("SELECT id FROM companies WHERE name='徽希科技'").fetchone()["id"]
+        service = ProgramService(self.db)
+        created = service.create({
+            "id": "new1",
+            "companyName": "内蒙古徽希科技有限公司",
+            "miniProgramName": "徽希智能抠图",
+        })
+        self.assertEqual("徽希科技", created["companyName"])
+        self.assertEqual("李润梅", created["legalPersonName"])
+        self.assertEqual("13000000000", created["legalPersonPhone"])
+        service.create({"id": "other", "companyName": "乙公司", "miniProgramName": "同名程序", "status": "待注册"})
+        service.create({"id": "mine", "companyName": "徽希科技", "miniProgramName": "同名程序", "status": "待注册"})
+        with self.db.connect() as conn:
+            self.assertEqual(2, conn.execute("SELECT COUNT(*) n FROM companies").fetchone()["n"])
+            self.assertEqual(company_id, conn.execute("SELECT company_id FROM programs WHERE id='new1'").fetchone()["company_id"])
+        saved = save_monitor(self.db, {"companies": [{"name": "内蒙古徽希科技有限公司", "enabled": True}]})
+        self.assertEqual(company_id, saved["companies"][0]["id"])
+        self.assertEqual("徽希科技", saved["companies"][0]["name"])
+        with self.db.connect() as conn:
+            self.assertEqual(2, conn.execute("SELECT COUNT(*) n FROM companies").fetchone()["n"])
+        self.db.set_setting("monitor_apihz", {"id": "from-db", "key": "from-db"})
+
+        def query(_credentials, company_name):
+            if company_name == "内蒙古徽希科技有限公司":
+                return [{"servicename": "同名程序", "icpw": "ICP-B"}]
+            return []
+
+        monitor = MonitorService(self.db, query=query, sender=lambda *_args: (True, "ok"), sleeper=lambda _seconds: None)
+        monitor.run("manual", "scope-1", datetime(2026, 1, 1, 10, 0))
+        self.assertEqual("备案完成", service.get("mine")["status"])
+        self.assertEqual("待注册", service.get("other")["status"])
+
+
 if __name__ == "__main__":
     unittest.main()

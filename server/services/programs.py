@@ -74,11 +74,15 @@ class ProgramService:
     def _assert_company(self, conn, company_name):
         if not self._scoped():
             return
-        row = conn.execute(
-            "SELECT id FROM companies WHERE name=? AND assigned_admin_id=?",
-            (str(company_name or ""), int(self.principal["id"])),
-        ).fetchone()
-        if not row:
+        rows = conn.execute(
+            """SELECT id FROM companies
+               WHERE assigned_admin_id=? AND (
+                 lower(trim(name))=lower(trim(?))
+                 OR (trim(full_name)<>'' AND lower(trim(full_name))=lower(trim(?)))
+               )""",
+            (int(self.principal["id"]), str(company_name or ""), str(company_name or "")),
+        ).fetchall()
+        if len(rows) != 1:
             raise PermissionError("无权操作该公司")
 
     def _assert_program(self, conn, program_id):
@@ -139,9 +143,14 @@ class ProgramService:
         with self.db.transaction() as conn:
             if conn.execute("SELECT 1 FROM programs WHERE id=?", (program_id,)).fetchone():
                 raise ValueError("program id already exists")
-            company_name = str(data.get("companyName") or "")
+            company_name = str(data.get("companyName") or "").strip()
+            data["companyName"] = company_name
             self._assert_company(conn, company_name)
             company_id = self._company_id(conn, company_name)
+            if company_id:
+                canonical = conn.execute("SELECT name FROM companies WHERE id=?", (company_id,)).fetchone()
+                if canonical:
+                    data["companyName"] = canonical["name"]
             self._inherit_company_legal(conn, company_id, data)
             self._assert_email_available(conn, str(data.get("email") or ""), program_id)
             values = [str(data.get(k) or "") for k in FIELDS]
@@ -216,6 +225,13 @@ class ProgramService:
                 company_id = self._company_id(conn, str(data.get("companyName") or ""))
                 updates.append("company_id=?")
                 args.append(company_id)
+                if company_id:
+                    canonical = conn.execute("SELECT name FROM companies WHERE id=?", (company_id,)).fetchone()
+                    if canonical:
+                        data["companyName"] = canonical["name"]
+                        for index, column in enumerate(updates):
+                            if column == "company_name=?":
+                                args[index] = canonical["name"]
                 if "legalPersonName" not in data or "legalPersonPhone" not in data:
                     inherited = self._company_legal(conn, company_id)
                     if inherited:
@@ -434,15 +450,43 @@ class ProgramService:
         )
 
     @staticmethod
-    def _company_id(conn, name):
-        if not name:
+    def _lookup_company(conn, name):
+        text = str(name or "").strip()
+        if not text:
             return None
+        row = conn.execute(
+            "SELECT * FROM companies WHERE lower(trim(name))=lower(trim(?))",
+            (text,),
+        ).fetchone()
+        if row:
+            return row
+        rows = conn.execute(
+            """SELECT * FROM companies
+               WHERE trim(full_name)<>'' AND lower(trim(full_name))=lower(trim(?))""",
+            (text,),
+        ).fetchall()
+        if len(rows) > 1:
+            raise ValueError("公司全称“%s”对应多家公司，请填写公司简称" % text)
+        return rows[0] if rows else None
+
+    @staticmethod
+    def _company_id(conn, name):
+        text = str(name or "").strip()
+        if not text:
+            return None
+        existing = ProgramService._lookup_company(conn, text)
+        if existing:
+            return existing["id"]
         stamp = now()
         conn.execute(
             """INSERT INTO companies(name,full_name,created_at,updated_at) VALUES(?,?,?,?)
-               ON CONFLICT(name) DO NOTHING""", (name, "", stamp, stamp)
+               ON CONFLICT(name) DO NOTHING""", (text, "", stamp, stamp)
         )
-        return conn.execute("SELECT id FROM companies WHERE name=?", (name,)).fetchone()["id"]
+        row = conn.execute(
+            "SELECT id FROM companies WHERE lower(trim(name))=lower(trim(?))",
+            (text,),
+        ).fetchone()
+        return row["id"] if row else None
 
     @staticmethod
     def _ensure_email(conn, address):

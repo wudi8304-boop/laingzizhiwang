@@ -127,6 +127,19 @@ def save_monitor(db, data):
                 current = conn.execute(
                     "SELECT * FROM companies WHERE lower(trim(name))=lower(trim(?))", (name,)
                 ).fetchone()
+            if not current:
+                full_matches = conn.execute(
+                    """SELECT * FROM companies
+                       WHERE trim(full_name)<>'' AND lower(trim(full_name))=lower(trim(?))""",
+                    (name,),
+                ).fetchall()
+                if len(full_matches) > 1:
+                    raise ValueError("公司全称“%s”对应多家公司，请填写公司简称" % name)
+                if len(full_matches) == 1:
+                    current = full_matches[0]
+                    name = current["name"]
+                    if not str(company.get("fullName") or "").strip():
+                        full_name = current["full_name"] or ""
             owner = conn.execute(
                 "SELECT * FROM companies WHERE lower(trim(name))=lower(trim(?))", (name,)
             ).fetchone()

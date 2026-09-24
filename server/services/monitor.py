@@ -206,7 +206,10 @@ class MonitorService:
             (company["id"], company["name"], company["full_name"], item["name"], normalized, item["icp"],
              stamp, run_id, stamp, stamp),
         )
-        rows = conn.execute("SELECT id FROM programs WHERE lower(trim(mini_program_name))=?", (normalized,)).fetchall()
+        rows = conn.execute(
+            "SELECT id FROM programs WHERE company_id=? AND lower(trim(mini_program_name))=?",
+            (company["id"], normalized),
+        ).fetchall()
         if rows:
             for row in rows:
                 conn.execute(

@@ -559,7 +559,7 @@
         <span>冲突/重复：<strong id="nameImportDuplicate">0</strong></span>
       </div>
       <div class="help-tip" style="margin-bottom:10px;">
-        支持名称、公司、AppID、原始ID、简介、类目、管理员、状态、邮箱、密钥等列；按 AppID 优先、名称兜底匹配。新增记录默认状态为“待注册”。
+        支持名称、公司、AppID、原始ID、简介、类目、管理员、状态、邮箱、密钥等列；按 AppID 优先、名称兜底匹配。公司请填简称，若填了已有主体全称会自动归入该公司。新增记录默认状态为“待注册”。
       </div>
       <div class="import-preview">
         <table>
@@ -1671,6 +1671,17 @@ function normalizeImportedName(value){
   return String(value == null ? '' : value).trim().replace(/\s+/g, ' ');
 }
 
+function canonicalCompanyName(value){
+  const text = String(value || '').trim();
+  if (!text) return '';
+  const companies = _companiesCache || [];
+  const folded = text.toLowerCase();
+  const byName = companies.filter(c => String(c.name || '').trim().toLowerCase() === folded);
+  if (byName.length === 1) return byName[0].name;
+  const byFull = companies.filter(c => String(c.fullName || '').trim() && String(c.fullName).trim().toLowerCase() === folded);
+  return byFull.length === 1 ? byFull[0].name : text;
+}
+
 async function prepareNameImport(event){
   const input = event.target;
   const file = input.files && input.files[0];
@@ -1720,6 +1731,7 @@ async function prepareNameImport(event){
         value = field === 'miniProgramName' ? normalizeImportedName(value) : String(value == null ? '' : value).trim();
         if (value) record[field] = value;
       });
+      if (record.companyName) record.companyName = canonicalCompanyName(record.companyName);
       return record;
     }).filter(record => record.miniProgramName);
     if (imported.length === 0) throw new Error('名称列中没有有效的小程序名称');
@@ -1751,7 +1763,7 @@ async function prepareNameImport(event){
       duplicateCount: conflictCount + fileDuplicateCount
     };
 
-    const companies = [...new Set(getAllRecords().map(r => r.companyName).filter(Boolean))].sort();
+    const companies = [...new Set([].concat((_companiesCache || []).map(c => c.name), getAllRecords().map(r => r.companyName)).filter(Boolean))].sort();
     document.getElementById('companyShortList').innerHTML =
       companies.map(c => `<option value="${esc(c)}">`).join('');
     document.getElementById('nameImportCompany').value = '';
@@ -1779,7 +1791,7 @@ function closeNameImportModal(){
 
 async function confirmNameImport(){
   if (!_nameImportState) return;
-  const defaultCompany = document.getElementById('nameImportCompany').value.trim();
+  const defaultCompany = canonicalCompanyName(document.getElementById('nameImportCompany').value.trim());
   const valid = _nameImportState.items.filter(x => !x.conflict);
   if (valid.some(x => !x.record.companyName) && !defaultCompany) {
     showToast('Excel中有记录缺少公司，请填写默认公司简称', 'error'); return;
