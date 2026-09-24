@@ -1856,18 +1856,23 @@ function refreshUnusedEmailDatalist(){
 }
 
 // 渲染邮箱列表（状态根据小程序列表动态匹配）
-function renderEmailList(){
-  const emails = getEmails();
-  const all = getAllRecords();
+function emailBindingMap(records){
   const emailMap = {};
-  all.forEach(r => {
+  (records || []).forEach(r => {
     const key = normalizeEmail(r.email);
     if (key) (emailMap[key] = emailMap[key] || []).push(r.miniProgramName);
   });
-  const body = document.getElementById('emailBody');
-  if (emails.length === 0) { body.innerHTML = '<tr class="empty"><td colspan="4">暂无邮箱，请导入或新增</td></tr>'; return; }
-  // 排序：不能使用置顶，其余未使用在前、已使用在后
-  emails.sort((a, b) => {
+  return emailMap;
+}
+
+function emailUsageStatus(email, emailMap){
+  if (email && email.usable === false) return '不能使用';
+  const names = (emailMap[normalizeEmail(email && email.email)] || []).filter(Boolean);
+  return names.length ? '已使用' : '未使用';
+}
+
+function sortEmailList(emails, emailMap){
+  return emails.sort((a, b) => {
     const ai = a.usable === false ? 0 : 1, bi = b.usable === false ? 0 : 1;
     if (ai !== bi) return ai - bi;
     const au = emailMap[normalizeEmail(a.email)] ? 1 : 0;
@@ -1875,14 +1880,24 @@ function renderEmailList(){
     if (au !== bu) return au - bu;
     return a.email.localeCompare(b.email);
   });
+}
+function renderEmailList(){
+  const emailMap = emailBindingMap(getAllRecords());
+  const emails = sortEmailList(getEmails(), emailMap);
+  const body = document.getElementById('emailBody');
+  if (emails.length === 0) { body.innerHTML = '<tr class="empty"><td colspan="4">暂无邮箱，请导入或新增</td></tr>'; return; }
   body.innerHTML = emails.map(e => {
-    const names = emailMap[normalizeEmail(e.email)] ? emailMap[normalizeEmail(e.email)].filter(Boolean) : [];
+    const names = (emailMap[normalizeEmail(e.email)] || []).filter(Boolean);
     const used = names.length > 0;
     const invalid = e.usable === false;
+    const status = emailUsageStatus(e, emailMap);
+    const statusHtml = invalid
+      ? `<span class="tag tag-status-待注册">${esc(status)}</span>${e.invalidAt ? `<div class="muted" style="font-size:10px;">${esc(e.invalidAt)}</div>` : ''}`
+      : (used ? `<span class="tag tag-status-备案完成">${esc(status)}</span>` : `<span class="tag tag-status-待审核">${esc(status)}</span>`);
     return `<tr>
       <td class="mono">${esc(e.email)}</td>
       <td>${used ? esc(names.join('、')) : '<span class="muted">—</span>'}</td>
-      <td>${invalid ? `<span class="tag tag-status-待注册">不能使用</span>${e.invalidAt ? `<div class="muted" style="font-size:10px;">${esc(e.invalidAt)}</div>` : ''}` : (used ? '<span class="tag tag-status-备案完成">已使用</span>' : '<span class="tag tag-status-待审核">未使用</span>')}</td>
+      <td>${statusHtml}</td>
       <td>${isSuper() ? `<div class="row-ops"><button class="icon-btn-sm del" onclick="deleteEmail('${encodeURIComponent(e.email)}')">删除</button></div>` : '<span class="muted">只读</span>'}</td>
     </tr>`;
   }).join('');
@@ -1977,9 +1992,11 @@ async function deleteEmail(encodedAddress){
 }
 
 function exportEmails(){
-  const list = getEmails();
+  const emailMap = emailBindingMap(getAllRecords());
+  const list = sortEmailList(getEmails(), emailMap);
   if (list.length === 0) { showToast('暂无邮箱可导出', 'error'); return; }
-  const blob = new Blob([JSON.stringify(list.map(e => e.email), null, 2)], { type: 'application/json' });
+  const rows = list.map(e => ({ email: e.email, status: emailUsageStatus(e, emailMap) }));
+  const blob = new Blob([JSON.stringify(rows, null, 2)], { type: 'application/json' });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a'); a.href = url; a.download = 'emails-' + new Date().toISOString().slice(0,10) + '.json'; a.click();
   URL.revokeObjectURL(url); showToast('已导出', 'success');
