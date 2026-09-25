@@ -75,6 +75,25 @@ const normalizeVendorRecord = (app, details, secrets, baseUrl) => {
   };
 };
 
+
+async function fetchVendorJson(page, token, url) {
+  return page.evaluate(async ({ token, url }) => {
+    const response = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
+    let body = null;
+    try { body = await response.json(); } catch (_) {}
+    return { ok: response.ok, status: response.status, body };
+  }, { token, url });
+}
+
+const hasVendorList = payload => {
+  if (Array.isArray(payload)) return true;
+  const root = objectValue(payload);
+  const data = objectValue(root.data);
+  return ["apps", "companies", "items", "list", "records"].some(
+    key => Array.isArray(root[key]) || Array.isArray(data[key])
+  );
+};
+
 async function main() {
   if (!output) throw new Error('用法: node vendor_scrape.js <output.json>');
   const username = env('VENDOR_USERNAME');
@@ -162,16 +181,16 @@ async function main() {
         text: (await page.locator('body').innerText()).slice(0, 3000),
       }));
     }
+    const token = await page.evaluate(() => localStorage.getItem('kc_token'));
+    if (!token) throw new Error('乙方平台登录令牌不存在');
     if (env('VENDOR_LIST_URL')) {
       await page.goto(env('VENDOR_LIST_URL'), { waitUntil: 'networkidle', timeout: 60000 });
-    } else {
-      const companyNav = page.getByText('公司列表', { exact: true }).last();
-      if (await companyNav.count()) {
-        await companyNav.click();
-        await page.waitForTimeout(1000);
-      }
+      for (let i = 0; i < 60 && !companiesPayload; i += 1) await page.waitForTimeout(250);
+    } else if (!companiesPayload) {
+      const companies = await fetchVendorJson(page, token, '/api/companies');
+      if (!companies.ok) throw new Error(`乙方公司列表获取失败：HTTP ${companies.status || '无响应'}`);
+      companiesPayload = companies.body;
     }
-    for (let i = 0; i < 60 && !companiesPayload; i += 1) await page.waitForTimeout(250);
     if (env('VENDOR_INSPECT', 'false') === 'true') {
       console.log(JSON.stringify({
         inspect: 'company-list',
@@ -239,7 +258,9 @@ async function main() {
       throw new Error('诊断模式完成');
     }
     const companyItems = payloadItems(companiesPayload);
-    if (!Array.isArray(companyItems)) throw new Error('乙方平台公司接口响应格式不正确');
+    if (!Array.isArray(companyItems) || !hasVendorList(companiesPayload)) {
+      throw new Error('乙方平台公司接口响应格式不正确');
+    }
     const mode = env('VENDOR_MODE', 'sync');
     const knownFile = env('VENDOR_KNOWN_COMPANIES_FILE');
     const known = knownFile && fs.existsSync(knownFile) ?
@@ -259,12 +280,15 @@ async function main() {
       return;
     }
 
-    const programNav = page.getByText('小程序列表', { exact: true }).last();
-    if (!await programNav.count()) throw new Error('未找到“小程序列表”导航');
-    await programNav.click();
-    for (let i = 0; i < 60 && !appsPayload; i += 1) await page.waitForTimeout(250);
+    if (!appsPayload) {
+      const apps = await fetchVendorJson(page, token, '/api/apps');
+      if (!apps.ok) throw new Error(`乙方小程序列表获取失败：HTTP ${apps.status || '无响应'}`);
+      appsPayload = apps.body;
+    }
     const appItems = payloadItems(appsPayload);
-    if (!Array.isArray(appItems)) throw new Error('乙方平台小程序接口响应格式不正确');
+    if (!Array.isArray(appItems) || !hasVendorList(appsPayload)) {
+      throw new Error('乙方平台小程序接口响应格式不正确');
+    }
     if (env('VENDOR_SHAPE_ONLY', 'false') === 'true') {
       const sample = objectValue(appItems[0]);
       console.log(JSON.stringify({
@@ -285,8 +309,6 @@ async function main() {
     )) : appItems.filter(app => newCompanies.includes(String(app.subject || '').trim()));
     const maxSelected = Number(env('VENDOR_MAX_SELECTED', '0'));
     const selected = maxSelected > 0 ? selectedItems.slice(0, maxSelected) : selectedItems;
-    const token = await page.evaluate(() => localStorage.getItem('kc_token'));
-    if (!token) throw new Error('乙方平台登录令牌不存在');
     const records = [];
     const detailWarnings = [];
     for (const app of selected) {
@@ -344,4 +366,4 @@ if (require.main === module) {
   });
 }
 
-module.exports = { normalizeVendorRecord, payloadItems, textValue };
+module.exports = { normalizeVendorRecord, payloadItems, textValue, hasVendorList };

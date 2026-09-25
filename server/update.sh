@@ -39,6 +39,7 @@ fi
 /usr/bin/python3 -m unittest server.tests.test_backend
 /usr/bin/python3 -m py_compile server/config_server.py server/check_monitor.py server/vendor_sync.py
 "${NODE_HOME}/bin/node" --check server/vendor_scrape.js
+chmod 0755 server/vendor_sync.sh server/backup.sh server/health_check.py server/verify_backup.py
 
 echo "===== 重启服务并执行健康冒烟 ====="
 systemctl restart "${SERVICE_NAME}"

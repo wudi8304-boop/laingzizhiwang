@@ -2,7 +2,7 @@
 "use strict";
 
 const assert = require("assert");
-const { normalizeVendorRecord, payloadItems } = require("../vendor_scrape");
+const { normalizeVendorRecord, payloadItems, hasVendorList } = require("../vendor_scrape");
 
 const record = normalizeVendorRecord(
   { id: 7, subject: "测试公司", name: "旧列表名称", appid: "wx-list" },
@@ -28,5 +28,8 @@ assert.strictEqual(record.originalId, "gh_demo");
 assert.strictEqual(record.secret, "secret-value");
 assert.strictEqual(record.email, "vendor@example.com");
 assert.deepStrictEqual(payloadItems({ data: { apps: [{ id: 1 }] } }), [{ id: 1 }]);
+assert.deepStrictEqual(payloadItems({ companies: [{ name: "甲" }] }), [{ name: "甲" }]);
+assert.strictEqual(hasVendorList({ companies: [] }), true);
+assert.strictEqual(hasVendorList({ brands: [] }), false);
 
 console.log("vendor_scrape_fixture_ok");
