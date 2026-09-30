@@ -426,10 +426,11 @@
           <button class="btn sm" onclick="saveVendorSettings()">保存天数</button>
           <button class="btn success sm" onclick="runVendorAction('sync',this)">立即同步</button>
           <button class="btn ghost sm" onclick="runVendorAction('match',this)">立即匹配</button>
+          <button class="btn warning sm" onclick="runVendorAction('settle',this)">立即结算</button>
           <span id="vendorSyncStatus" style="font-size:12px;color:var(--text-3);"></span>
         </div>
         <div class="help-tip" style="margin-top:8px;margin-bottom:0;font-size:11px;">
-          自动同步和立即同步只导入新增企业；立即匹配只补齐现有小程序的空字段，不覆盖已有资料。
+          自动同步和立即同步只导入新增企业；立即匹配只补齐现有小程序的空字段，不覆盖已有资料。立即结算读取采购系统的验收/结算状态，只把其中已结算的小程序明细改为已结算。
         </div>
       </div>
       <div class="section config-section">
@@ -2473,17 +2474,22 @@ async function runVendorAction(mode, btn){
   if (_vendorRunning) { showToast('乙方平台任务正在运行', 'error'); return; }
   _vendorRunning = true;
   const original = btn ? btn.textContent : '';
-  if (btn) { btn.disabled = true; btn.textContent = mode === 'match' ? '匹配中...' : '同步中...'; }
+  const runningText = { match: '匹配中...', settle: '结算中...', sync: '同步中...' };
+  const endpoints = { match: '/api/vendor/match', settle: '/api/vendor/settle', sync: '/api/vendor/sync' };
+  const failures = { match: '立即匹配失败：', settle: '立即结算失败：', sync: '立即同步失败：' };
+  if (btn) { btn.disabled = true; btn.textContent = runningText[mode] || runningText.sync; }
   try {
-    const result = await apiPost(mode === 'match' ? '/api/vendor/match' : '/api/vendor/sync', {});
+    const result = await apiPost(endpoints[mode] || endpoints.sync, {});
     await Promise.all([loadAllPrograms(), refreshWorkbench(false), loadVendorSettings()]);
     render(); renderDashboard();
-    if (mode === 'match') {
+    if (mode === 'settle') {
+      showToast(`结算完成：${Number(result.updated || 0)} 个小程序已改为已结算`, 'success');
+    } else if (mode === 'match') {
       showToast(`匹配完成：更新 ${Number(result.updated || 0)} 个小程序、补齐 ${Number(result.fieldsUpdated || 0)} 个字段`, 'success');
     } else {
       showToast(`同步完成：新增 ${Number(result.created || 0)} 个小程序`, 'success');
     }
-  } catch(e) { showToast((mode === 'match' ? '立即匹配失败：' : '立即同步失败：') + e.message, 'error'); }
+  } catch(e) { showToast((failures[mode] || failures.sync) + e.message, 'error'); }
   finally {
     _vendorRunning = false;
     if (btn) { btn.disabled = false; btn.textContent = original; }

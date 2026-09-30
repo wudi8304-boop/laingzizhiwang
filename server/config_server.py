@@ -570,6 +570,8 @@ class Handler(BaseHTTPRequestHandler):
             return run_vendor_job("force")
         if path == "/api/vendor/match" and method == "POST":
             return run_vendor_job("match")
+        if path == "/api/vendor/settle" and method == "POST":
+            return run_vendor_job("settle")
         if method == "GET" and path == "/api/status":
             with self.db.connect() as conn:
                 last = conn.execute("SELECT * FROM monitor_runs ORDER BY id DESC LIMIT 1").fetchone()

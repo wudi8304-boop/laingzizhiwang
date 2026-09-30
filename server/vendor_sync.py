@@ -267,6 +267,79 @@ def match_records(db, records, source_ref=""):
         raise
 
 
+
+SETTLED_VENDOR_STATUSES = {"已结算", "结算"}
+
+
+def settle_records(db, records, source_ref=""):
+    """把采购系统验收/结算状态为已结算的小程序，写入本地明细状态。"""
+    service = ProgramService(db)
+    summary = {
+        "total": len(records), "settledSource": 0, "matched": 0, "updated": 0,
+        "already": 0, "conflicts": 0, "skipped": 0,
+    }
+    with db.connect() as conn:
+        cur = conn.execute(
+            "INSERT INTO import_jobs(source,status,source_ref,started_at) VALUES('vendor-settle','running',?,?)",
+            (source_ref, now()),
+        )
+        job_id = cur.lastrowid
+    try:
+        for raw in records:
+            if not isinstance(raw, dict):
+                summary["skipped"] += 1
+                continue
+            settle_status = str(raw.get("settleStatus") or "").strip()
+            if settle_status not in SETTLED_VENDOR_STATUSES:
+                continue
+            summary["settledSource"] += 1
+            external_id = str(raw.get("externalId") or "").strip()
+            appid = str(raw.get("appid") or "").strip()
+            name = str(raw.get("miniProgramName") or "").strip()
+            item = {"externalId": external_id, "appid": appid, "miniProgramName": name, "settleStatus": settle_status}
+            with db.connect() as conn:
+                matches = []
+                if external_id:
+                    matches = conn.execute("SELECT id FROM programs WHERE external_id=?", (external_id,)).fetchall()
+                if not matches and appid:
+                    matches = conn.execute("SELECT id FROM programs WHERE appid=?", (appid,)).fetchall()
+                if not matches and name:
+                    matches = conn.execute(
+                        "SELECT id FROM programs WHERE trim(mini_program_name)=?", (name,)
+                    ).fetchall()
+            if len(matches) != 1:
+                if len(matches) > 1:
+                    summary["conflicts"] += 1
+                    add_exception(db, "采购系统结算记录匹配到多个小程序", item)
+                else:
+                    summary["skipped"] += 1
+                continue
+            program_id = matches[0]["id"]
+            existing = service.get(program_id)
+            summary["matched"] += 1
+            if existing["status"] == "已结算":
+                summary["already"] += 1
+                continue
+            if existing["status"] in LOCKED_STATUSES:
+                summary["skipped"] += 1
+                continue
+            service.update(program_id, {"status": "已结算"}, "vendor-settle")
+            summary["updated"] += 1
+        with db.connect() as conn:
+            conn.execute(
+                "UPDATE import_jobs SET status='success',summary=?,finished_at=? WHERE id=?",
+                (json.dumps(summary, ensure_ascii=False), now(), job_id),
+            )
+        return summary
+    except Exception as exc:
+        with db.connect() as conn:
+            conn.execute(
+                "UPDATE import_jobs SET status='failed',error=?,summary=?,finished_at=? WHERE id=?",
+                (str(exc), json.dumps(summary, ensure_ascii=False), now(), job_id),
+            )
+        raise
+
+
 def sync_due(db):
     days = max(1, min(365, int(db.get_setting("vendor_sync_days", 1) or 1)))
     last = str(db.get_setting("vendor_last_sync_at", "") or "")
@@ -359,6 +432,7 @@ def main():
     parser.add_argument("--force", action="store_true", help="忽略 VENDOR_SYNC_ENABLED 开关")
     parser.add_argument("--from-json", help="从 JSON 数组验证导入规则，不访问网站")
     parser.add_argument("--match-json", help="仅用乙方资料补齐现有小程序空字段")
+    parser.add_argument("--settle-json", help="按采购系统验收/结算状态把已结算小程序写入明细")
     parser.add_argument("--export-known-companies", help="导出公司名称和全称供增量抓取使用")
     parser.add_argument("--export-match-candidates", help="导出资料不完整的现有小程序")
     parser.add_argument("--check-due", action="store_true", help="检查自动同步是否到期")
@@ -391,7 +465,7 @@ def main():
         print("乙方平台同步未启用")
         return 0
     try:
-        json_path = args.match_json or args.from_json
+        json_path = args.match_json or args.settle_json or args.from_json
         if json_path:
             with open(json_path, "r", encoding="utf-8") as fh:
                 records, source_ref = json.load(fh), json_path
@@ -399,6 +473,8 @@ def main():
             records, source_ref = scrape_vendor()
         if args.match_json:
             summary = match_records(db, records, source_ref)
+        elif args.settle_json:
+            summary = settle_records(db, records, source_ref)
         else:
             summary = upsert_records(
                 db, records, source_ref, new_companies_only=not bool(args.from_json)

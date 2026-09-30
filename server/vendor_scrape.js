@@ -3,8 +3,6 @@
 
 const fs = require('fs');
 const path = require('path');
-const { chromium } = require('playwright');
-
 const output = process.argv[2];
 
 const env = (name, fallback = '') => (process.env[name] || '').trim() || fallback;
@@ -72,6 +70,7 @@ const normalizeVendorRecord = (app, details, secrets, baseUrl) => {
     secret: textValue(firstValue([secrets], ['appSecret', 'app_secret', 'secret'])),
     admin: textValue(firstValue(sources, ['manager', 'admin', 'administrator'])),
     email: textValue(firstValue([secrets, details, app], ['email', 'admin_email', 'adminEmail'])),
+    settleStatus: textValue(firstValue(sources, ['settle_status', 'settleStatus'])),
   };
 };
 
@@ -95,6 +94,7 @@ const hasVendorList = payload => {
 };
 
 async function main() {
+  const { chromium } = require('playwright');
   if (!output) throw new Error('用法: node vendor_scrape.js <output.json>');
   const username = env('VENDOR_USERNAME');
   const password = process.env.VENDOR_PASSWORD || '';
@@ -274,7 +274,8 @@ async function main() {
     const matchFile = env('VENDOR_MATCH_CANDIDATES_FILE');
     const candidates = mode === 'match' && matchFile && fs.existsSync(matchFile) ?
       JSON.parse(fs.readFileSync(matchFile, 'utf8')) : [];
-    if ((mode === 'match' && !candidates.length) || (mode !== 'match' && !newCompanies.length)) {
+    const shouldStop = mode === 'match' ? !candidates.length : (mode !== 'settle' && !newCompanies.length);
+    if (shouldStop) {
       fs.writeFileSync(output, '[]', 'utf8');
       console.log(JSON.stringify({ mode, count: 0, newCompanies: [] }));
       return;
@@ -300,6 +301,15 @@ async function main() {
           .map(([key, value]) => [key, Object.keys(value)])),
       }));
       fs.writeFileSync(output, '[]', 'utf8');
+      return;
+    }
+    if (mode === 'settle') {
+      const records = appItems.map(app => normalizeVendorRecord(app, {}, {}, page.url()));
+      fs.writeFileSync(output, JSON.stringify(records, null, 2), 'utf8');
+      console.log(JSON.stringify({
+        mode, count: records.length,
+        settled: records.filter(row => row.settleStatus === '已结算').length,
+      }));
       return;
     }
     const selectedItems = mode === 'match' ? appItems.filter(app => candidates.some(candidate =>

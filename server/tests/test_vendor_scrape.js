@@ -27,6 +27,7 @@ assert.strictEqual(record.category, "工具、生活");
 assert.strictEqual(record.originalId, "gh_demo");
 assert.strictEqual(record.secret, "secret-value");
 assert.strictEqual(record.email, "vendor@example.com");
+assert.strictEqual(normalizeVendorRecord({ id: 8, name: "结算程序", appid: "wx-s", settle_status: "已结算" }, {}, {}, "https://xcx.qn76.cn/").settleStatus, "已结算");
 assert.deepStrictEqual(payloadItems({ data: { apps: [{ id: 1 }] } }), [{ id: 1 }]);
 assert.deepStrictEqual(payloadItems({ companies: [{ name: "甲" }] }), [{ name: "甲" }]);
 assert.strictEqual(hasVendorList({ companies: [] }), true);

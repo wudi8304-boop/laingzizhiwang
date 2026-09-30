@@ -23,7 +23,7 @@ from services.account import AccountService
 from services.auth import AuthService, verify_password
 from services.monitor import MonitorService
 from services.programs import ProgramService
-from vendor_sync import match_records, sync_due, upsert_records
+from vendor_sync import match_records, settle_records, sync_due, upsert_records
 
 
 class BackendTest(unittest.TestCase):
@@ -709,6 +709,44 @@ class BackendTest(unittest.TestCase):
         program = ProgramService(self.db).list(search="程序D")["items"][0]
         self.assertEqual("", program["email"])
         self.assertEqual("待乙方补全资料", program["taskReason"])
+
+    def test_vendor_settle_updates_only_procurement_settled_programs(self):
+        service = ProgramService(self.db)
+        service.create({
+            "id": "settled-src", "companyName": "甲公司", "miniProgramName": "程序结算",
+            "appid": "wx-settle", "status": "备案完成",
+        })
+        service.create({
+            "id": "accepted-src", "companyName": "甲公司", "miniProgramName": "程序验收",
+            "appid": "wx-accept", "status": "已验收",
+        })
+        service.create({
+            "id": "open-src", "companyName": "甲公司", "miniProgramName": "程序未开始",
+            "appid": "wx-open", "status": "备案完成",
+        })
+        service.create({
+            "id": "done-src", "companyName": "甲公司", "miniProgramName": "程序已结算",
+            "appid": "wx-done", "status": "已结算",
+        })
+        summary = settle_records(self.db, [
+            {"externalId": "11", "appid": "wx-settle", "miniProgramName": "程序结算", "settleStatus": "已结算"},
+            {"appid": "wx-accept", "miniProgramName": "程序验收", "settleStatus": "已验收"},
+            {"appid": "wx-open", "miniProgramName": "程序未开始", "settleStatus": "未开始"},
+            {"appid": "wx-done", "miniProgramName": "程序已结算", "settleStatus": "已结算"},
+            {"appid": "wx-missing", "miniProgramName": "不存在", "settleStatus": "已结算"},
+        ], "test")
+        self.assertEqual(3, summary["settledSource"])
+        self.assertEqual(1, summary["updated"])
+        self.assertEqual(1, summary["already"])
+        self.assertEqual(1, summary["skipped"])
+        settled = service.get("settled-src")
+        self.assertEqual("已结算", settled["status"])
+        self.assertTrue(settled["settlementTime"])
+        self.assertTrue(settled["completionTime"])
+        self.assertEqual("已验收", service.get("accepted-src")["status"])
+        self.assertEqual("", service.get("accepted-src")["settlementTime"])
+        self.assertEqual("备案完成", service.get("open-src")["status"])
+        self.assertEqual("已结算", service.get("done-src")["status"])
 
     def test_vendor_match_only_fills_empty_fields_and_due_days(self):
         service = ProgramService(self.db)

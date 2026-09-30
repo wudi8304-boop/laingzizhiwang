@@ -27,7 +27,11 @@ if [[ "${MODE}" == "scheduled" ]]; then
   [[ ${due_code} -eq 0 ]] || exit "${due_code}"
 fi
 
-if [[ "${MODE}" == "match" ]]; then
+if [[ "${MODE}" == "settle" ]]; then
+  VENDOR_MODE=settle \
+    "${NODE_HOME}/bin/node" "${APP_DIR}/server/vendor_scrape.js" "${tmp}"
+  "${PYTHON_BIN}" "${APP_DIR}/server/vendor_sync.py" --force --settle-json "${tmp}"
+elif [[ "${MODE}" == "match" ]]; then
   "${PYTHON_BIN}" "${APP_DIR}/server/vendor_sync.py" --export-match-candidates "${selector}"
   VENDOR_MODE=match VENDOR_MATCH_CANDIDATES_FILE="${selector}" \
     "${NODE_HOME}/bin/node" "${APP_DIR}/server/vendor_scrape.js" "${tmp}"
