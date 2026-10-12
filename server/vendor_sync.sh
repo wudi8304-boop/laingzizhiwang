@@ -38,7 +38,13 @@ elif [[ "${MODE}" == "match" ]]; then
   "${PYTHON_BIN}" "${APP_DIR}/server/vendor_sync.py" --force --match-json "${tmp}"
 else
   "${PYTHON_BIN}" "${APP_DIR}/server/vendor_sync.py" --export-known-companies "${selector}"
-  VENDOR_MODE=sync VENDOR_KNOWN_COMPANIES_FILE="${selector}" \
-    "${NODE_HOME}/bin/node" "${APP_DIR}/server/vendor_scrape.js" "${tmp}"
-  "${PYTHON_BIN}" "${APP_DIR}/server/vendor_sync.py" --force --from-json "${tmp}"
+  if [[ "${MODE}" == "force" ]]; then
+    VENDOR_MODE=sync VENDOR_SYNC_ALL=true VENDOR_KNOWN_COMPANIES_FILE="${selector}" \
+      "${NODE_HOME}/bin/node" "${APP_DIR}/server/vendor_scrape.js" "${tmp}"
+    "${PYTHON_BIN}" "${APP_DIR}/server/vendor_sync.py" --force --from-json "${tmp}" --fill-existing
+  else
+    VENDOR_MODE=sync VENDOR_KNOWN_COMPANIES_FILE="${selector}" \
+      "${NODE_HOME}/bin/node" "${APP_DIR}/server/vendor_scrape.js" "${tmp}"
+    "${PYTHON_BIN}" "${APP_DIR}/server/vendor_sync.py" --force --from-json "${tmp}"
+  fi
 fi

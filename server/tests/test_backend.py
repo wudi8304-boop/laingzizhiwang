@@ -150,6 +150,52 @@ class BackendTest(unittest.TestCase):
                 ],
             })
 
+    def test_monitor_short_name_adopts_company_created_with_full_name(self):
+        service = ProgramService(self.db)
+        service.create({
+            "id": "p1", "companyName": "邢台市智绘未来信息科技有限公司",
+            "miniProgramName": "程序A", "legalPersonPhone": "13800000000",
+        })
+        saved = save_monitor(self.db, {
+            "companies": [{
+                "name": "智绘未来", "fullName": "邢台市智绘未来信息科技有限公司", "enabled": True,
+            }],
+        })
+        self.assertEqual(["智绘未来"], [row["name"] for row in saved["companies"]])
+        self.assertEqual("邢台市智绘未来信息科技有限公司", saved["companies"][0]["fullName"])
+        self.assertEqual("智绘未来", service.get("p1")["companyName"])
+        with self.db.connect() as conn:
+            self.assertEqual(1, conn.execute("SELECT COUNT(*) n FROM companies").fetchone()["n"])
+            company = conn.execute("SELECT legal_person_phone FROM companies").fetchone()
+        self.assertEqual("13800000000", company["legal_person_phone"])
+
+    def test_monitor_short_name_merges_existing_full_name_company(self):
+        service = ProgramService(self.db)
+        service.create({
+            "id": "p1", "companyName": "北京示例科技有限公司", "miniProgramName": "程序A",
+        })
+        stamp = now()
+        with self.db.connect() as conn:
+            conn.execute(
+                """INSERT INTO companies(name,full_name,enabled,monitor_listed,legal_person_phone,created_at,updated_at)
+                   VALUES('示例科技','北京示例科技有限公司',1,1,'13900000000',?,?)""",
+                (stamp, stamp),
+            )
+            short_id = conn.execute("SELECT id FROM companies WHERE name='示例科技'").fetchone()["id"]
+        saved = save_monitor(self.db, {
+            "companies": [{
+                "id": short_id, "name": "示例科技",
+                "fullName": "北京示例科技有限公司", "enabled": True,
+            }],
+        })
+        self.assertEqual(short_id, saved["companies"][0]["id"])
+        self.assertEqual("示例科技", service.get("p1")["companyName"])
+        with self.db.connect() as conn:
+            rows = conn.execute("SELECT id,name FROM companies").fetchall()
+            phone = conn.execute("SELECT legal_person_phone FROM companies WHERE id=?", (short_id,)).fetchone()
+        self.assertEqual([(short_id, "示例科技")], [(row["id"], row["name"]) for row in rows])
+        self.assertEqual("13900000000", phone["legal_person_phone"])
+
     def test_monitor_delete_removes_company_from_monitor_list_only(self):
         service = ProgramService(self.db)
         service.create({"id": "p1", "companyName": "甲", "miniProgramName": "程序A"})
@@ -674,6 +720,31 @@ class BackendTest(unittest.TestCase):
         self.assertEqual("同步简介", imported["description"])
         self.assertEqual("工具", imported["category"])
         self.assertFalse(any(row["appid"] == "old" for row in rows))
+
+    def test_vendor_sync_fill_existing_keeps_status_and_existing_fields(self):
+        service = ProgramService(self.db)
+        service.create({
+            "id": "p1", "companyName": "已有公司", "miniProgramName": "程序A",
+            "appid": "keep", "status": "备案完成", "admin": "原管理员",
+        })
+        summary = upsert_records(self.db, [
+            {
+                "companyName": "已有公司", "miniProgramName": "程序A", "externalId": "9",
+                "appid": "new", "admin": "新管理员", "description": "同步简介",
+            },
+            {"companyName": "已有公司", "miniProgramName": "程序B", "appid": "wx-b"},
+        ], "test", new_companies_only=False, fill_existing=True)
+        row = service.get("p1")
+        self.assertEqual(1, summary["updated"])
+        self.assertEqual(1, summary["created"])
+        self.assertEqual("keep", row["appid"])
+        self.assertEqual("原管理员", row["admin"])
+        self.assertEqual("备案完成", row["status"])
+        self.assertEqual("同步简介", row["description"])
+        self.assertEqual("9", row["externalId"])
+        created = service.list(search="程序B")["items"][0]
+        self.assertEqual("待注册", created["status"])
+        self.assertEqual("wx-b", created["appid"])
 
     def test_vendor_new_program_randomly_assigns_only_unused_email(self):
         stamp = now()

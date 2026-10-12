@@ -274,7 +274,8 @@ async function main() {
     const matchFile = env('VENDOR_MATCH_CANDIDATES_FILE');
     const candidates = mode === 'match' && matchFile && fs.existsSync(matchFile) ?
       JSON.parse(fs.readFileSync(matchFile, 'utf8')) : [];
-    const shouldStop = mode === 'match' ? !candidates.length : (mode !== 'settle' && !newCompanies.length);
+    const syncAll = mode === 'sync' && env('VENDOR_SYNC_ALL', 'false') === 'true';
+    const shouldStop = mode === 'match' ? !candidates.length : (mode !== 'settle' && !syncAll && !newCompanies.length);
     if (shouldStop) {
       fs.writeFileSync(output, '[]', 'utf8');
       console.log(JSON.stringify({ mode, count: 0, newCompanies: [] }));
@@ -316,13 +317,17 @@ async function main() {
       (candidate.externalId && String(candidate.externalId) === String(app.id)) ||
       (candidate.appid && normalize(candidate.appid) === normalize(app.appid)) ||
       (candidate.miniProgramName && normalize(candidate.miniProgramName) === normalize(app.name))
-    )) : appItems.filter(app => newCompanies.includes(String(app.subject || '').trim()));
+    )) : (syncAll ? appItems : appItems.filter(app => newCompanies.includes(String(app.subject || '').trim())));
     const maxSelected = Number(env('VENDOR_MAX_SELECTED', '0'));
     const selected = maxSelected > 0 ? selectedItems.slice(0, maxSelected) : selectedItems;
     const records = [];
     const detailWarnings = [];
     for (const app of selected) {
       const listRecord = normalizeVendorRecord(app, {}, {}, page.url());
+      if (syncAll && !newCompanies.includes(String(app.subject || '').trim())) {
+        records.push(listRecord);
+        continue;
+      }
       const needsDetail = ['miniProgramName', 'avatarUrl', 'description', 'category']
         .some(field => !listRecord[field]);
       const detailResult = needsDetail ? await page.evaluate(async ({ id, token }) => {

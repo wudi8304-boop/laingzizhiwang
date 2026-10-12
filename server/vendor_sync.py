@@ -72,7 +72,7 @@ def random_unused_email(db):
     return str(row["address"]).strip() if row else ""
 
 
-def upsert_records(db, records, source_ref="", new_companies_only=True):
+def upsert_records(db, records, source_ref="", new_companies_only=True, fill_existing=False):
     service = ProgramService(db)
     with db.connect() as conn:
         known_company_names = {
@@ -97,7 +97,7 @@ def upsert_records(db, records, source_ref="", new_companies_only=True):
     summary = {
         "total": len(records), "newCompanies": new_companies, "selected": len(selected),
         "created": 0, "updated": 0, "conflicts": 0, "skipped": 0,
-        "emailsAssigned": 0, "emailsUnavailable": 0,
+        "emailsAssigned": 0, "emailsUnavailable": 0, "fieldsUpdated": 0,
     }
     with db.connect() as conn:
         cur = conn.execute(
@@ -148,8 +148,32 @@ def upsert_records(db, records, source_ref="", new_companies_only=True):
             if any(not str(item.get(field) or "").strip() for field in required):
                 item["taskReason"] = "待乙方补全资料"
             if len(matches) == 1:
-                service.update(matches[0]["id"], item, "vendor-sync")
-                summary["updated"] += 1
+                if fill_existing:
+                    existing = service.get(matches[0]["id"])
+                    updates = {}
+                    for field in (
+                        "externalId", "avatarUrl", "description", "category",
+                        "appid", "originalId", "secret", "admin", "email",
+                    ):
+                        if not str(existing.get(field) or "").strip() and str(item.get(field) or "").strip():
+                            updates[field] = str(item[field]).strip()
+                    if updates:
+                        merged = dict(existing)
+                        merged.update(updates)
+                        required = ("appid", "originalId", "secret", "admin", "email")
+                        if (
+                            all(str(merged.get(field) or "").strip() for field in required)
+                            and existing.get("taskReason") == "待乙方补全资料"
+                        ):
+                            updates["taskReason"] = ""
+                        service.update(matches[0]["id"], updates, "vendor-sync")
+                        summary["updated"] += 1
+                        summary["fieldsUpdated"] += sum(1 for key in updates if key != "taskReason")
+                    else:
+                        summary["skipped"] += 1
+                else:
+                    service.update(matches[0]["id"], item, "vendor-sync")
+                    summary["updated"] += 1
             else:
                 service.create(item, "vendor-sync")
                 summary["created"] += 1
@@ -431,6 +455,7 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--force", action="store_true", help="忽略 VENDOR_SYNC_ENABLED 开关")
     parser.add_argument("--from-json", help="从 JSON 数组验证导入规则，不访问网站")
+    parser.add_argument("--fill-existing", action="store_true", help="已有小程序只补空字段，不覆盖状态和已有资料")
     parser.add_argument("--match-json", help="仅用乙方资料补齐现有小程序空字段")
     parser.add_argument("--settle-json", help="按采购系统验收/结算状态把已结算小程序写入明细")
     parser.add_argument("--export-known-companies", help="导出公司名称和全称供增量抓取使用")
@@ -477,7 +502,9 @@ def main():
             summary = settle_records(db, records, source_ref)
         else:
             summary = upsert_records(
-                db, records, source_ref, new_companies_only=not bool(args.from_json)
+                db, records, source_ref,
+                new_companies_only=not bool(args.from_json),
+                fill_existing=args.fill_existing,
             )
         if args.from_json and not summary["conflicts"] and not summary["skipped"]:
             synced = set(db.get_setting("vendor_synced_companies") or [])

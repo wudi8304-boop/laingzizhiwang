@@ -93,11 +93,71 @@ def monitor_config(db):
     }
 
 
+def _companies_for_legal_name(conn, legal_name):
+    text = str(legal_name or "").strip()
+    if not text:
+        return []
+    return conn.execute(
+        """SELECT * FROM companies
+           WHERE lower(trim(name))=lower(trim(?))
+              OR (trim(full_name)<>'' AND lower(trim(full_name))=lower(trim(?)))""",
+        (text, text),
+    ).fetchall()
+
+
+def _merge_company_shell(conn, source_id, target_id, short_name, stamp):
+    """把按主体全称单独建出的公司并入简称公司，并改掉明细上的公司名。"""
+    if source_id == target_id:
+        return
+    source = conn.execute("SELECT * FROM companies WHERE id=?", (source_id,)).fetchone()
+    target = conn.execute("SELECT * FROM companies WHERE id=?", (target_id,)).fetchone()
+    if not source or not target:
+        return
+    if not str(target["legal_person_name"] or "").strip() and str(source["legal_person_name"] or "").strip():
+        conn.execute(
+            "UPDATE companies SET legal_person_name=?,updated_at=? WHERE id=?",
+            (source["legal_person_name"], stamp, target_id),
+        )
+    if not str(target["legal_person_phone"] or "").strip() and str(source["legal_person_phone"] or "").strip():
+        conn.execute(
+            "UPDATE companies SET legal_person_phone=?,updated_at=? WHERE id=?",
+            (source["legal_person_phone"], stamp, target_id),
+        )
+    if not target["assigned_admin_id"] and source["assigned_admin_id"]:
+        conn.execute(
+            "UPDATE companies SET assigned_admin_id=? WHERE id=?",
+            (source["assigned_admin_id"], target_id),
+        )
+    program_ids = [row["id"] for row in conn.execute("SELECT id FROM programs WHERE company_id=?", (source_id,))]
+    conn.execute(
+        "UPDATE programs SET company_id=?,company_name=?,updated_at=? WHERE company_id=?",
+        (target_id, short_name, stamp, source_id),
+    )
+    if program_ids:
+        conn.execute(
+            "UPDATE exceptions SET company_name=? WHERE program_id IN (%s)" % ",".join("?" for _ in program_ids),
+            [short_name] + program_ids,
+        )
+    conn.execute(
+        "UPDATE approved_programs SET company_id=?,company_name=? WHERE company_id=?",
+        (target_id, short_name, source_id),
+    )
+    conn.execute("DELETE FROM monitor_items WHERE company_id=?", (source_id,))
+    conn.execute("DELETE FROM companies WHERE id=?", (source_id,))
+
+
 def save_monitor(db, data):
     if not isinstance(data, dict):
         raise ValueError("data must be an object")
     saved = []
     with db.transaction() as conn:
+        payload_ids = set()
+        for company in data.get("companies") or []:
+            if isinstance(company, dict):
+                company_id = _company_id(company.get("id"))
+                if company_id:
+                    payload_ids.add(company_id)
+        pending_merges = []
         for key in ("times", "apihz", "dingtalk"):
             if key in data:
                 db.set_setting("monitor_" + key, data[key], conn)
@@ -140,6 +200,20 @@ def save_monitor(db, data):
                     name = current["name"]
                     if not str(company.get("fullName") or "").strip():
                         full_name = current["full_name"] or ""
+            legal_name = str(full_name or "").strip()
+            legal_matches = []
+            if legal_name:
+                legal_matches = [
+                    row for row in _companies_for_legal_name(conn, legal_name)
+                    if not current or row["id"] != current["id"]
+                ]
+                if not current:
+                    adoptable = [row for row in legal_matches if row["id"] not in payload_ids]
+                    if len(adoptable) > 1:
+                        raise ValueError("公司全称“%s”对应多家公司，请填写公司简称" % legal_name)
+                    if len(adoptable) == 1:
+                        current = adoptable[0]
+                        legal_matches = [row for row in legal_matches if row["id"] != current["id"]]
             owner = conn.execute(
                 "SELECT * FROM companies WHERE lower(trim(name))=lower(trim(?))", (name,)
             ).fetchone()
@@ -164,10 +238,15 @@ def save_monitor(db, data):
                     (name, full_name, enabled, 1, last_check, last_count, has_new, stamp, stamp),
                 )
                 company_id = cur.lastrowid
+            for source in legal_matches:
+                if source["id"] != company_id and source["id"] not in payload_ids:
+                    pending_merges.append((source["id"], company_id, name, stamp))
             kept_ids.append(company_id)
             saved.append(company_monitor_item(
                 conn.execute("SELECT * FROM companies WHERE id=?", (company_id,)).fetchone()
             ))
+        for source_id, target_id, short_name, merged_at in pending_merges:
+            _merge_company_shell(conn, source_id, target_id, short_name, merged_at)
         if kept_ids:
             placeholders = ",".join("?" for _ in kept_ids)
             conn.execute(

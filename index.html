@@ -430,7 +430,7 @@
           <span id="vendorSyncStatus" style="font-size:12px;color:var(--text-3);"></span>
         </div>
         <div class="help-tip" style="margin-top:8px;margin-bottom:0;font-size:11px;">
-          自动同步和立即同步只导入新增企业；立即匹配只补齐现有小程序的空字段，不覆盖已有资料。立即结算读取采购系统的验收/结算状态，只把其中已结算的小程序明细改为已结算。
+          自动同步只导入新增企业。立即同步读取采购系统的全部小程序：新企业整条导入，已有小程序只补空字段，不覆盖已有资料和状态。采购系统没有的 AppID、密钥等不会写入。立即匹配同样只补空字段。立即结算只把采购系统里已结算的小程序明细改为已结算。
         </div>
       </div>
       <div class="section config-section">
@@ -875,7 +875,7 @@ function switchPage(name){
   if (name === 'email') renderEmailList();
   if (name === 'dashboard') renderDashboard();
   if (name === 'exceptions') renderWorkbench();
-  if (name === 'companies') renderCompanyManagement();
+  if (name === 'companies') loadCompanyManagement();
 }
 
 function toggleSidebar(){
@@ -2342,6 +2342,10 @@ async function toggleCompanyMonitor(idx, enabled){
   showToast(enabled ? '已开启监控' : '已暂停监控', 'success');
 }
 
+async function refreshCompanyViews(){
+  await Promise.all([loadCompanyManagement(), loadAllPrograms()]);
+  render();
+}
 async function updateCompanyName(idx, name){
   const cfg = getMonitorConfig();
   if (!cfg.companies[idx]) return;
@@ -2352,9 +2356,23 @@ async function updateCompanyName(idx, name){
   } catch(e) {
     showToast('公司简称保存失败：' + e.message, 'error');
     loadMonitorConfigToForm();
+    return;
   }
+  try { await refreshCompanyViews(); } catch(e) { showToast('公司列表刷新失败：' + e.message, 'error'); }
 }
-async function updateCompanyFullName(idx, fullName){ const cfg = getMonitorConfig(); if (cfg.companies[idx]) { cfg.companies[idx].fullName = fullName.trim(); try { await setMonitorConfig(cfg); } catch(e) { showToast('公司全称保存失败：' + e.message, 'error'); } } }
+async function updateCompanyFullName(idx, fullName){
+  const cfg = getMonitorConfig();
+  if (!cfg.companies[idx]) return;
+  cfg.companies[idx].fullName = fullName.trim();
+  try {
+    await setMonitorConfig(cfg);
+  } catch(e) {
+    showToast('公司全称保存失败：' + e.message, 'error');
+    loadMonitorConfigToForm();
+    return;
+  }
+  try { await refreshCompanyViews(); } catch(e) { showToast('公司列表刷新失败：' + e.message, 'error'); }
+}
 async function setAllMonitor(enabled){ const cfg = getMonitorConfig(); cfg.companies.forEach(c => c.enabled = enabled); try { await setMonitorConfig(cfg); } catch(e) { showToast('监控状态保存失败：' + e.message, 'error'); return; } renderCompanyMonitorList(cfg.companies); updateMonitorStats(); showToast(enabled ? '已全部开启' : '已全部暂停', 'success'); }
 function updateMonitorStats(){ const cfg = getMonitorConfig(); const total = cfg.companies.length; const running = cfg.companies.filter(c => c.enabled).length; document.getElementById('totalCompanies').textContent = total; document.getElementById('runningCompanies').textContent = running; document.getElementById('pausedCompanies').textContent = total - running; }
 async function addCompany(){ const cfg = getMonitorConfig(); cfg.companies.push({ name: '', fullName: '', enabled: true, lastCount: null, lastCheck: '', hasNew: false }); try { await setMonitorConfig(cfg); } catch(e) { showToast('新增公司失败：' + e.message, 'error'); return; } renderCompanyMonitorList(cfg.companies); updateMonitorStats(); }
@@ -2444,6 +2462,7 @@ async function saveMonitorConfig(){
   if (!cfg.dingtalk.webhook) { showToast('请填写钉钉机器人 Webhook 地址', 'error'); return false; }
   if (cfg.companies.length === 0) { showToast('请添加至少一个监控公司', 'error'); return false; }
   try { await setMonitorConfig(cfg); } catch(e) { showToast('配置保存失败：' + e.message, 'error'); return false; }
+  try { await refreshCompanyViews(); } catch(e) { showToast('公司列表刷新失败：' + e.message, 'error'); }
   showToast('配置已保存到服务器', 'success');
   return true;
 }
@@ -2487,7 +2506,7 @@ async function runVendorAction(mode, btn){
     } else if (mode === 'match') {
       showToast(`匹配完成：更新 ${Number(result.updated || 0)} 个小程序、补齐 ${Number(result.fieldsUpdated || 0)} 个字段`, 'success');
     } else {
-      showToast(`同步完成：新增 ${Number(result.created || 0)} 个小程序`, 'success');
+      showToast(`同步完成：新增 ${Number(result.created || 0)} 个，补齐 ${Number(result.updated || 0)} 个`, 'success');
     }
   } catch(e) { showToast((failures[mode] || failures.sync) + e.message, 'error'); }
   finally {
