@@ -146,7 +146,9 @@ class ProgramService:
             company_name = str(data.get("companyName") or "").strip()
             data["companyName"] = company_name
             self._assert_company(conn, company_name)
-            company_id = self._company_id(conn, company_name)
+            company_id = self._company_id(
+                conn, company_name, company_name if actor == "vendor-sync" else ""
+            )
             if company_id:
                 canonical = conn.execute("SELECT name FROM companies WHERE id=?", (company_id,)).fetchone()
                 if canonical:
@@ -221,8 +223,11 @@ class ProgramService:
                     args.append("")
             company_id = current_row["company_id"]
             if "companyName" in data:
-                self._assert_company(conn, str(data.get("companyName") or ""))
-                company_id = self._company_id(conn, str(data.get("companyName") or ""))
+                company_name = str(data.get("companyName") or "").strip()
+                self._assert_company(conn, company_name)
+                company_id = self._company_id(
+                    conn, company_name, company_name if actor == "vendor-sync" else ""
+                )
                 updates.append("company_id=?")
                 args.append(company_id)
                 if company_id:
@@ -470,7 +475,7 @@ class ProgramService:
         return rows[0] if rows else None
 
     @staticmethod
-    def _company_id(conn, name):
+    def _company_id(conn, name, full_name_on_create=""):
         text = str(name or "").strip()
         if not text:
             return None
@@ -478,9 +483,10 @@ class ProgramService:
         if existing:
             return existing["id"]
         stamp = now()
+        legal_name = str(full_name_on_create or "").strip()
         conn.execute(
             """INSERT INTO companies(name,full_name,created_at,updated_at) VALUES(?,?,?,?)
-               ON CONFLICT(name) DO NOTHING""", (text, "", stamp, stamp)
+               ON CONFLICT(name) DO NOTHING""", (text, legal_name, stamp, stamp)
         )
         row = conn.execute(
             "SELECT id FROM companies WHERE lower(trim(name))=lower(trim(?))",

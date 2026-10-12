@@ -721,6 +721,89 @@ class BackendTest(unittest.TestCase):
         self.assertEqual("工具", imported["category"])
         self.assertFalse(any(row["appid"] == "old" for row in rows))
 
+    def test_vendor_new_company_stores_legal_name_then_short_name_can_replace_it(self):
+        legal = "邢台市智绘未来信息科技有限公司"
+        service = ProgramService(self.db)
+        service.create({"id": "manual", "companyName": "手工简称", "miniProgramName": "手工程序"})
+        stamp = now()
+        with self.db.connect() as conn:
+            conn.execute(
+                """INSERT INTO companies(name,full_name,enabled,monitor_listed,created_at,updated_at)
+                   VALUES('已暂停','已暂停科技有限公司',0,0,?,?)""",
+                (stamp, stamp),
+            )
+        summary = upsert_records(self.db, [{
+            "companyName": legal, "miniProgramName": "程序A", "appid": "wx-a",
+        }], "test")
+        self.assertEqual([legal], summary["newCompanies"])
+        created_program = service.list(search="程序A")["items"][0]
+        self.assertEqual(legal, created_program["companyName"])
+        with self.db.connect() as conn:
+            created = conn.execute(
+                "SELECT id,name,full_name,enabled,monitor_listed FROM companies WHERE name=?",
+                (legal,),
+            ).fetchone()
+            manual = conn.execute(
+                "SELECT name,full_name,enabled FROM companies WHERE name='手工简称'"
+            ).fetchone()
+            paused = conn.execute(
+                "SELECT name,full_name,enabled,monitor_listed FROM companies WHERE name='已暂停'"
+            ).fetchone()
+        self.assertEqual(legal, created["full_name"])
+        self.assertEqual(1, created["enabled"])
+        self.assertEqual(1, created["monitor_listed"])
+        self.assertEqual("", manual["full_name"])
+        self.assertEqual(0, paused["enabled"])
+        self.assertEqual(0, paused["monitor_listed"])
+
+        paused_sync = upsert_records(self.db, [{
+            "companyName": "已暂停科技有限公司", "miniProgramName": "暂停程序", "appid": "wx-paused",
+        }], "test", new_companies_only=False, fill_existing=True)
+        self.assertEqual(1, paused_sync["created"])
+        self.assertEqual("已暂停", service.list(search="暂停程序")["items"][0]["companyName"])
+        with self.db.connect() as conn:
+            paused = conn.execute(
+                "SELECT name,full_name,enabled,monitor_listed FROM companies WHERE name='已暂停'"
+            ).fetchone()
+        self.assertEqual("已暂停科技有限公司", paused["full_name"])
+        self.assertEqual(0, paused["enabled"])
+        self.assertEqual(0, paused["monitor_listed"])
+
+        saved = save_monitor(self.db, {"companies": [{
+            "id": created["id"], "name": "智绘未来", "fullName": legal, "enabled": True,
+        }]})
+        self.assertEqual("智绘未来", saved["companies"][0]["name"])
+        self.assertEqual(legal, saved["companies"][0]["fullName"])
+        self.assertEqual("智绘未来", service.get(created_program["id"])["companyName"])
+
+        skipped = upsert_records(self.db, [{
+            "companyName": legal, "miniProgramName": "程序B", "appid": "wx-b",
+        }], "test")
+        self.assertEqual([], skipped["newCompanies"])
+        self.assertEqual([], service.list(search="程序B")["items"])
+
+        with self.db.connect() as conn:
+            conn.execute("UPDATE companies SET enabled=0 WHERE id=?", (created["id"],))
+        again = upsert_records(self.db, [{
+            "companyName": legal, "miniProgramName": "程序B", "appid": "wx-b",
+        }], "test", new_companies_only=False, fill_existing=True)
+        self.assertEqual(1, again["created"])
+        self.assertEqual("智绘未来", service.list(search="程序B")["items"][0]["companyName"])
+        with self.db.connect() as conn:
+            renamed = conn.execute(
+                "SELECT name,full_name,enabled,monitor_listed FROM companies WHERE id=?",
+                (created["id"],),
+            ).fetchone()
+            duplicates = conn.execute(
+                """SELECT COUNT(*) n FROM companies
+                   WHERE name=? OR full_name=? OR name=?""",
+                (legal, legal, "智绘未来"),
+            ).fetchone()["n"]
+        self.assertEqual("智绘未来", renamed["name"])
+        self.assertEqual(legal, renamed["full_name"])
+        self.assertEqual(0, renamed["enabled"])
+        self.assertEqual(1, duplicates)
+
     def test_vendor_sync_fill_existing_keeps_status_and_existing_fields(self):
         service = ProgramService(self.db)
         service.create({
