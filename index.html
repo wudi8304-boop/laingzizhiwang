@@ -338,6 +338,8 @@
           <button class="btn success sm" onclick="openAdd()">+ 新增</button>
           <button class="btn ghost sm" onclick="document.getElementById('nameImportFile').click()">⬆ 导入小程序名称</button>
           <input type="file" id="nameImportFile" accept=".xlsx,.xls" style="display:none;" onchange="prepareNameImport(event)">
+          <button class="btn ghost sm" onclick="downloadDocument('tax-clearance')">清税证明</button>
+          <button class="btn ghost sm" onclick="downloadDocument('situation')">情况说明</button>
           <button class="btn ghost sm" onclick="exportJSON()">导出</button>
         </div>
       </div>
@@ -1007,6 +1009,25 @@ function avatarHtml(value, preview, programId){
     ? ` class="avatar-thumb clickable" onclick="downloadProgramAvatar('${esc(programId)}',event)" title="点击下载头像"`
     : ' class="avatar-thumb"';
   return `<img${idAttr}${download} src="${esc(url)}" alt="小程序头像" referrerpolicy="no-referrer" onerror="this.style.display='none';this.nextElementSibling.style.display='inline';"><span class="muted" style="display:none;">加载失败</span>`;
+}
+async function downloadDocument(key){
+  try {
+    const r = await fetch('/api/documents/' + encodeURIComponent(key), { credentials: 'same-origin' });
+    if (!r.ok) {
+      let payload = null;
+      try { payload = await r.json(); } catch(_) {}
+      throw new Error((payload && (payload.message || payload.error)) || '下载失败');
+    }
+    const blob = await r.blob();
+    const match = /filename\*=UTF-8''([^;]+)|filename="?([^"]+)"?/i.exec(r.headers.get('Content-Disposition') || '');
+    const filename = decodeURIComponent((match && (match[1] || match[2])) || 'document.docx');
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = filename; a.click();
+    URL.revokeObjectURL(url);
+  } catch(e) {
+    showToast('文件下载失败：' + e.message, 'error');
+  }
 }
 async function downloadProgramAvatar(id, event){
   if (event) event.stopPropagation();

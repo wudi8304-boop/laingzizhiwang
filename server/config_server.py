@@ -16,7 +16,7 @@ from http.server import BaseHTTPRequestHandler, HTTPServer
 from socketserver import ThreadingMixIn
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from db import Database, now
+from db import DEFAULT_DATA_DIR, Database, now
 from migrate_data import migrate
 from services.account import AccountService
 from services.auth import AuthService
@@ -28,6 +28,30 @@ HOST = os.environ.get("LAINGZIZHIWANG_HOST", "127.0.0.1")
 PORT = int(os.environ.get("LAINGZIZHIWANG_PORT", "8091"))
 DB = Database()
 APP_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+DOCUMENTS = {
+    "tax-clearance": ("清税证明.docx", "tax-clearance.docx"),
+    "situation": ("情况说明.docx", "situation.docx"),
+}
+
+
+def load_document(key):
+    item = DOCUMENTS.get(str(key or ""))
+    if not item:
+        raise ValueError("文件不存在")
+    filename, stored = item
+    base = os.environ.get("LAINGZIZHIWANG_DATA_DIR") or os.environ.get("DATA_DIR") or DEFAULT_DATA_DIR
+    path = os.path.join(base, "documents", stored)
+    if not os.path.isfile(path):
+        raise ValueError("文件不存在")
+    with open(path, "rb") as handle:
+        body = handle.read()
+    return {
+        "_file": True,
+        "body": body,
+        "contentType": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        "filename": filename,
+    }
+
 
 
 def run_vendor_job(mode):
@@ -601,10 +625,13 @@ class Handler(BaseHTTPRequestHandler):
             or path == "/api/programs" or path.startswith("/api/programs/")
             or (path == "/api/emails" and method == "GET")
             or (path == "/api/exceptions" and method == "POST")
+            or (method == "GET" and path.startswith("/api/documents/"))
         )
         if not is_super and not subadmin_allowed:
             raise PermissionError("当前账号无权访问该功能")
 
+        if method == "GET" and path.startswith("/api/documents/"):
+            return load_document(path[len("/api/documents/"):])
         if path == "/api/admin-users":
             if method == "GET":
                 return auth.list()

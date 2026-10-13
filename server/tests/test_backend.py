@@ -17,7 +17,7 @@ SERVER_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, SERVER_DIR)
 
 from db import Database, now
-from config_server import Handler, ThreadingHTTPServer, fetch_program_avatar, monitor_config, save_monitor
+from config_server import Handler, ThreadingHTTPServer, fetch_program_avatar, load_document, monitor_config, save_monitor
 from migrate_data import migrate
 from services.account import AccountService
 from services.auth import AuthService, verify_password
@@ -109,6 +109,31 @@ class BackendTest(unittest.TestCase):
         self.assertEqual("程序A.png", result["filename"])
         with self.assertRaisesRegex(ValueError, "没有可下载的头像"):
             fetch_program_avatar({"avatarUrl": "javascript:alert(1)"})
+
+    def test_document_download_reads_private_files(self):
+        old = os.environ.get("LAINGZIZHIWANG_DATA_DIR")
+        os.environ["LAINGZIZHIWANG_DATA_DIR"] = self.tmp
+        try:
+            folder = os.path.join(self.tmp, "documents")
+            os.makedirs(folder)
+            with open(os.path.join(folder, "tax-clearance.docx"), "wb") as handle:
+                handle.write(b"PK tax")
+            with open(os.path.join(folder, "situation.docx"), "wb") as handle:
+                handle.write(b"PK note")
+            tax = load_document("tax-clearance")
+            note = load_document("situation")
+            self.assertEqual("清税证明.docx", tax["filename"])
+            self.assertEqual(b"PK tax", tax["body"])
+            self.assertTrue(tax["contentType"].endswith("wordprocessingml.document"))
+            self.assertEqual("情况说明.docx", note["filename"])
+            self.assertEqual(b"PK note", note["body"])
+            with self.assertRaisesRegex(ValueError, "文件不存在"):
+                load_document("../app.db")
+        finally:
+            if old is None:
+                os.environ.pop("LAINGZIZHIWANG_DATA_DIR", None)
+            else:
+                os.environ["LAINGZIZHIWANG_DATA_DIR"] = old
 
     def test_monitor_rename_updates_existing_company_instead_of_creating(self):
         service = ProgramService(self.db)

@@ -66,6 +66,12 @@ const { chromium } = require("playwright");
     if (!headers.some(text => text.includes("法人姓名"))) throw new Error("legal name column missing");
     if (!headers.some(text => text.includes("法人手机号"))) throw new Error("legal phone column missing");
     if (!headers.some(text => text.includes("紧急联系人"))) throw new Error("emergency contact column missing");
+    if (!await page.locator("#page-data button", { hasText: "清税证明" }).count()) {
+      throw new Error("tax clearance download missing");
+    }
+    if (!await page.locator("#page-data button", { hasText: "情况说明" }).count()) {
+      throw new Error("situation note download missing");
+    }
     if (!headers.some(text => text.includes("Key文件"))) throw new Error("key file column missing");
     if (headers.some(text => text.includes("小程序密码"))) throw new Error("password column should be hidden");
     const lockedStatus = page.locator("#tbody .tag-status-已结算").first();
