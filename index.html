@@ -713,7 +713,7 @@ const COLS = [
   { key: 'admin', label: '管理员', sortable: true, form: { type: 'text' } },
   { key: 'legalPersonName', label: '法人姓名', sortable: true, form: { type: 'text' } },
   { key: 'legalPersonPhone', label: '法人手机号', type: 'mono', sortable: true, form: { type: 'text' } },
-  { key: 'miniProgramPhone', label: '小程序手机号', type: 'mono', sortable: true, form: { type: 'text' } },
+  { key: 'miniProgramPhone', label: '紧急联系人', type: 'mono', sortable: true, form: { type: 'text' } },
   { key: 'status', label: '状态', type: 'status', sortable: true, form: { type: 'select', options: ['待注册', '待审核', '备案中', '备案驳回', '备案完成', '已验收', '已结算', '已结算三方'] } },
   { key: 'email', label: '邮箱', type: 'mono', form: { type: 'text' } },
   { key: 'miniProgramPassword', label: '小程序密码', type: 'copy', form: { type: 'text' }, tableShow: false },
@@ -1708,7 +1708,7 @@ async function prepareNameImport(event){
       '法人姓名':'legalPersonName','法人名称':'legalPersonName','法人':'legalPersonName',
       '法人手机号':'legalPersonPhone','法人电话':'legalPersonPhone','法人手机':'legalPersonPhone',
       '驳回原因':'rejectReason','备案驳回原因':'rejectReason',
-      '小程序手机号':'miniProgramPhone','小程序电话':'miniProgramPhone','小程序手机':'miniProgramPhone',
+      '紧急联系人':'miniProgramPhone','小程序手机号':'miniProgramPhone','小程序电话':'miniProgramPhone','小程序手机':'miniProgramPhone',
       '状态':'status',
       '邮箱':'email','密钥':'secret','secret':'secret','小程序密码':'miniProgramPassword',
       '提交时间':'submitDate','提交日期':'submitDate'
