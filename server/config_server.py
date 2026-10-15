@@ -688,7 +688,7 @@ class Handler(BaseHTTPRequestHandler):
                     "SELECT COUNT(*) n FROM exceptions WHERE status='open'"
                 ).fetchone()["n"]
                 counts["pendingNotifications"] = conn.execute(
-                    "SELECT COUNT(*) n FROM notifications WHERE status<>'sent'"
+                    "SELECT COUNT(*) n FROM notifications WHERE status NOT IN ('sent','skipped')"
                 ).fetchone()["n"]
             return {"data": {
                 "ok": True, "counts": counts, "lastRun": dict(last) if last else None,

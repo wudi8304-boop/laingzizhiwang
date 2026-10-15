@@ -1067,5 +1067,104 @@ class BackendTest(unittest.TestCase):
         self.assertEqual("待注册", service.get("other")["status"])
 
 
+    def test_monitor_skips_dingtalk_for_quiet_statuses(self):
+        stamp = now()
+        with self.db.connect() as conn:
+            conn.execute(
+                "INSERT INTO companies(name,full_name,enabled,created_at,updated_at) VALUES('甲','甲公司',1,?,?)",
+                (stamp, stamp),
+            )
+        self.db.set_setting("monitor_apihz", {"id": "from-db", "key": "from-db"})
+        programs = ProgramService(self.db)
+        calls = {"run": 0, "sent": []}
+
+        def query(_credentials, _name):
+            calls["run"] += 1
+            baseline = [{"servicename": "基线程序", "icpw": "ICP-0"}]
+            if calls["run"] == 1:
+                return baseline
+            return baseline + [
+                {"servicename": "已完成程序", "icpw": "ICP-1"},
+                {"servicename": "已结算程序", "icpw": "ICP-2"},
+                {"servicename": "三方程序", "icpw": "ICP-3"},
+                {"servicename": "驳回程序", "icpw": "ICP-4"},
+                {"servicename": "全新程序", "icpw": "ICP-5"},
+                {"servicename": "验收程序", "icpw": "ICP-6"},
+            ]
+
+        def sender(_ding, content):
+            calls["sent"].append(content)
+            return True, "ok"
+
+        service = MonitorService(self.db, query=query, sender=sender, sleeper=lambda _: None)
+        self.assertEqual("success", service.run("manual", "quiet-1", datetime(2026, 2, 1, 10, 0))["status"])
+        self.assertEqual([], calls["sent"])
+        programs.create({"id": "done", "companyName": "甲", "miniProgramName": "已完成程序", "status": "备案完成"})
+        programs.create({"id": "settled", "companyName": "甲", "miniProgramName": "已结算程序", "status": "已结算"})
+        programs.create({"id": "third", "companyName": "甲", "miniProgramName": "三方程序", "status": "已结算三方"})
+        programs.create({"id": "reject", "companyName": "甲", "miniProgramName": "驳回程序", "status": "备案驳回", "rejectReason": "主体信息不符"})
+        programs.create({"id": "accepted", "companyName": "甲", "miniProgramName": "验收程序", "status": "已验收"})
+        self.assertEqual("success", service.run("manual", "quiet-2", datetime(2026, 2, 1, 11, 0))["status"])
+        joined = "\n".join(calls["sent"])
+        self.assertEqual(3, len(calls["sent"]))
+        self.assertIn("驳回程序", joined)
+        self.assertIn("全新程序", joined)
+        self.assertIn("验收程序", joined)
+        for quiet_name in ("已完成程序", "已结算程序", "三方程序"):
+            self.assertNotIn(quiet_name, joined)
+        self.assertEqual("备案完成", programs.get("done")["status"])
+        self.assertEqual("已结算", programs.get("settled")["status"])
+        self.assertEqual("已结算三方", programs.get("third")["status"])
+        self.assertEqual("备案完成", programs.get("reject")["status"])
+        self.assertEqual("已验收", programs.get("accepted")["status"])
+        with self.db.connect() as conn:
+            rows = conn.execute("SELECT status FROM notifications ORDER BY id").fetchall()
+        self.assertEqual(["sent", "sent", "sent"], [row["status"] for row in rows])
+
+    def test_retry_skips_dingtalk_for_already_quiet_programs(self):
+        programs = ProgramService(self.db)
+        programs.create({"id": "done", "companyName": "甲", "miniProgramName": "已完成程序", "status": "备案完成"})
+        programs.create({"id": "settled", "companyName": "甲", "miniProgramName": "已结算程序", "status": "已结算"})
+        programs.create({"id": "fresh", "companyName": "甲", "miniProgramName": "刚完成程序", "status": "备案完成"})
+        detected = "2026-02-01 11:00:00"
+        with self.db.connect() as conn:
+            conn.execute("UPDATE programs SET completed_at=? WHERE id='fresh'", (detected,))
+            queued = [
+                ("old-done", "已完成程序", "2026-02-01 11:00:00"),
+                ("old-settled", "已结算程序", "2026-02-01 11:00:00"),
+                ("same-stamp", "刚完成程序", detected),
+            ]
+            for key, name, detected_at in queued:
+                conn.execute(
+                    """INSERT INTO notifications(event_key,payload,status,created_at,updated_at)
+                       VALUES(?,?,'pending',?,?)""",
+                    (
+                        key,
+                        json.dumps({
+                            "companyName": "甲", "companyFullName": "甲公司",
+                            "name": name, "icp": "ICP", "detectedAt": detected_at,
+                        }, ensure_ascii=False),
+                        detected_at, detected_at,
+                    ),
+                )
+        sent = []
+        service = MonitorService(
+            self.db,
+            sender=lambda _ding, content: sent.append(content) or (True, "ok"),
+            sleeper=lambda _seconds: None,
+        )
+        service.retry_notifications({})
+        self.assertEqual(1, len(sent))
+        self.assertIn("刚完成程序", sent[0])
+        with self.db.connect() as conn:
+            statuses = {
+                row["event_key"]: row["status"]
+                for row in conn.execute("SELECT event_key,status FROM notifications").fetchall()
+            }
+        self.assertEqual("skipped", statuses["old-done"])
+        self.assertEqual("skipped", statuses["old-settled"])
+        self.assertEqual("sent", statuses["same-stamp"])
+
+
 if __name__ == "__main__":
     unittest.main()

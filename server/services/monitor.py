@@ -25,6 +25,9 @@ def item_key(item):
     return ("name:" + item["name"]) if item.get("name") else (("icp:" + item["icp"]) if item.get("icp") else "")
 
 
+DINGTALK_QUIET_STATUSES = ("已结算", "已结算三方", "备案完成")
+
+
 class MonitorBusyError(RuntimeError):
     pass
 
@@ -177,23 +180,34 @@ class MonitorService:
                      json.dumps(item, ensure_ascii=False), stamp),
                 )
                 if item["name"]:
+                    quiet = self._already_quiet(conn, company, item)
                     self._approve_and_match(conn, run_id, company, item, stamp)
+                else:
+                    quiet = False
                 if is_new:
                     new_items.append(item)
-                    event_key = "filing:%s:%s" % (company["id"], key)
-                    payload = {
-                        "companyName": company["name"], "companyFullName": company["full_name"],
-                        "name": item["name"], "icp": item["icp"], "detectedAt": stamp,
-                    }
-                    conn.execute(
-                        """INSERT OR IGNORE INTO notifications(event_key,payload,status,created_at,updated_at)
-                           VALUES(?,?,'pending',?,?)""",
-                        (event_key, json.dumps(payload, ensure_ascii=False), stamp, stamp),
-                    )
+                    if not quiet:
+                        event_key = "filing:%s:%s" % (company["id"], key)
+                        payload = {
+                            "companyName": company["name"], "companyFullName": company["full_name"],
+                            "name": item["name"], "icp": item["icp"], "detectedAt": stamp,
+                        }
+                        conn.execute(
+                            """INSERT OR IGNORE INTO notifications(event_key,payload,status,created_at,updated_at)
+                               VALUES(?,?,'pending',?,?)""",
+                            (event_key, json.dumps(payload, ensure_ascii=False), stamp, stamp),
+                        )
             conn.execute(
                 "UPDATE companies SET last_check=?,last_count=?,has_new=?,updated_at=? WHERE id=?",
                 (stamp, len(items), int(bool(new_items)), now(), company["id"]),
             )
+
+    def _already_quiet(self, conn, company, item):
+        rows = conn.execute(
+            "SELECT status FROM programs WHERE company_id=? AND lower(trim(mini_program_name))=?",
+            (company["id"], item["name"].casefold()),
+        ).fetchall()
+        return bool(rows) and all(row["status"] in DINGTALK_QUIET_STATUSES for row in rows)
 
     def _approve_and_match(self, conn, run_id, company, item, stamp):
         normalized = item["name"].casefold()
@@ -261,6 +275,14 @@ class MonitorService:
             ).fetchall()
         for row in rows:
             payload = json.loads(row["payload"])
+            if self._notification_quiet(payload):
+                with self.db.connect() as conn:
+                    conn.execute(
+                        """UPDATE notifications SET status='skipped',last_error=NULL,next_retry_at=NULL,updated_at=?
+                           WHERE id=?""",
+                        (now(), row["id"]),
+                    )
+                continue
             content = str(payload.get("content") or "")
             if not content:
                 content = "【备案监控】%s 新增小程序：%s%s" % (
@@ -297,6 +319,29 @@ class MonitorService:
                     "钉钉通知多次发送失败", payload.get("companyName", ""), payload.get("name", ""),
                     {"notificationId": row["id"], "error": message},
                 )
+
+    def _notification_quiet(self, payload):
+        name = str(payload.get("name") or "").strip()
+        company_name = str(payload.get("companyName") or "").strip()
+        detected_at = str(payload.get("detectedAt") or "").strip()
+        if not name or not company_name:
+            return False
+        with self.db.connect() as conn:
+            rows = conn.execute(
+                """SELECT status, completed_at FROM programs
+                   WHERE lower(trim(company_name))=lower(trim(?))
+                     AND lower(trim(mini_program_name))=lower(trim(?))""",
+                (company_name, name),
+            ).fetchall()
+        if not rows:
+            return False
+        for row in rows:
+            status = row["status"] or ""
+            if status not in DINGTALK_QUIET_STATUSES:
+                return False
+            if status == "备案完成" and detected_at and (row["completed_at"] or "") == detected_at:
+                return False
+        return True
 
     def _credentials(self):
         apihz = dict(self.db.get_setting("monitor_apihz", {}) or {})
