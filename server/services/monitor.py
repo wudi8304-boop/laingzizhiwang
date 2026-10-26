@@ -25,7 +25,7 @@ def item_key(item):
     return ("name:" + item["name"]) if item.get("name") else (("icp:" + item["icp"]) if item.get("icp") else "")
 
 
-DINGTALK_QUIET_STATUSES = ("已结算", "已结算三方", "备案完成")
+DINGTALK_QUIET_STATUSES = ("已结算", "已结算三方", "备案完成", "已封禁")
 
 
 class MonitorBusyError(RuntimeError):
@@ -228,8 +228,8 @@ class MonitorService:
             for row in rows:
                 conn.execute(
                     """UPDATE programs SET
-                       completed_at=CASE WHEN status NOT IN ('备案完成','已验收','已结算','已结算三方') THEN ? ELSE completed_at END,
-                       status='备案完成',reject_reason='',updated_at=? WHERE id=? AND status NOT IN ('已验收','已结算','已结算三方')""",
+                       completed_at=CASE WHEN status NOT IN ('备案完成','已验收','已结算','已结算三方','已封禁') THEN ? ELSE completed_at END,
+                       status='备案完成',reject_reason='',updated_at=? WHERE id=? AND status NOT IN ('已验收','已结算','已结算三方','已封禁')""",
                     (stamp, stamp, row["id"]),
                 )
         else:

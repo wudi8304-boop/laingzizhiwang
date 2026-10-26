@@ -107,6 +107,7 @@
   .tag-status-已验收 { background: #f0f9eb; color: #67c23a; border: 1px solid #e1f3d8; }
   .tag-status-已结算 { background: #f4f4f5; color: #909399; border: 1px solid #e9e9eb; }
   .tag-status-已结算三方 { background: #eef2ff; color: #3f51b5; border: 1px solid #c5cae9; }
+  .tag-status-已封禁 { background: #fff1f0; color: #cf1322; border: 1px solid #ffa39e; }
   .secret-field { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
   .secret-field .secret-input { width: 34ch; max-width: 100%; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
   .secret-meta { display: flex; align-items: center; gap: 8px; margin-top: 4px; }
@@ -464,7 +465,7 @@
           <div class="form-item"><label>通知关键词（安全设置，默认备案监控）</label><input type="text" id="cfg_ding_keyword" placeholder="备案监控" onchange="autoSaveMonitor()"></div>
         </div>
         <div class="help-tip" style="margin-top:8px;margin-bottom:0;font-size:11px;">
-          钉钉群 → 群设置 → 智能群助手 → 添加机器人 → 自定义。安全设置选"加签"或"自定义关键词"。发现新增备案时自动推送通知到群。明细里已经是已结算、已结算三方或备案完成的小程序不再通知。
+          钉钉群 → 群设置 → 智能群助手 → 添加机器人 → 自定义。安全设置选"加签"或"自定义关键词"。发现新增备案时自动推送通知到群。明细里已经是已结算、已结算三方、备案完成或已封禁的小程序不再通知。
         </div>
       </div>
       <div class="section config-section">
@@ -716,16 +717,16 @@ const COLS = [
   { key: 'legalPersonName', label: '法人姓名', sortable: true, form: { type: 'text' } },
   { key: 'legalPersonPhone', label: '法人手机号', type: 'mono', sortable: true, form: { type: 'text' } },
   { key: 'miniProgramPhone', label: '紧急联系人', type: 'mono', sortable: true, form: { type: 'text' } },
-  { key: 'status', label: '状态', type: 'status', sortable: true, form: { type: 'select', options: ['待注册', '待审核', '备案中', '备案驳回', '备案完成', '已验收', '已结算', '已结算三方'] } },
+  { key: 'status', label: '状态', type: 'status', sortable: true, form: { type: 'select', options: ['待注册', '待审核', '备案中', '备案驳回', '备案完成', '已验收', '已结算', '已结算三方', '已封禁'] } },
   { key: 'email', label: '邮箱', type: 'mono', form: { type: 'text' } },
   { key: 'miniProgramPassword', label: '小程序密码', type: 'copy', form: { type: 'text' }, tableShow: false },
   { key: 'submitDate', label: '提交时间', type: 'date', sortable: true, form: { type: 'date' }, formShow: false }
 ];
-const STATUS_LIST = ['待注册','待审核','备案中','备案驳回','备案完成','已验收','已结算','已结算三方'];
+const STATUS_LIST = ['待注册','待审核','备案中','备案驳回','备案完成','已验收','已结算','已结算三方','已封禁'];
 const DEFAULT_STATUS = '待注册';
 const OP_COL = { key: '_op', label: '操作', type: 'op' };
-// 状态排序优先级：待注册 > 待审核 > 备案驳回 > 备案中 > 备案完成 > 已验收 > 已结算 > 已结算三方
-const STATUS_ORDER = { '待注册': 0, '待审核': 1, '备案驳回': 2, '备案中': 3, '备案完成': 4, '已验收': 5, '已结算': 6, '已结算三方': 7 };
+// 状态排序优先级：待注册 > 待审核 > 备案驳回 > 备案中 > 备案完成 > 已验收 > 已结算 > 已结算三方 > 已封禁
+const STATUS_ORDER = { '待注册': 0, '待审核': 1, '备案驳回': 2, '备案中': 3, '备案完成': 4, '已验收': 5, '已结算': 6, '已结算三方': 7, '已封禁': 8 };
 function getStatusOrder(s){ return STATUS_ORDER[s] != null ? STATUS_ORDER[s] : 99; }
 function isLockedStatus(status){ return status === '已结算' || status === '已结算三方'; }
 const UPLOAD_KEY_MAX_BYTES = 2048;

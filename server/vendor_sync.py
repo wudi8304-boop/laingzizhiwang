@@ -344,6 +344,9 @@ def settle_records(db, records, source_ref=""):
             if existing["status"] == "已结算":
                 summary["already"] += 1
                 continue
+            if existing["status"] == "已封禁":
+                summary["skipped"] += 1
+                continue
             if existing["status"] in LOCKED_STATUSES:
                 summary["skipped"] += 1
                 continue

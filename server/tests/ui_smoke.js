@@ -85,7 +85,7 @@ const { chromium } = require("playwright");
       }
     }
     const statuses = await page.locator("#bulkStatus option").allTextContents();
-    const expectedStatuses = ["批量改状态", "待注册", "待审核", "备案中", "备案驳回", "备案完成", "已验收", "已结算", "已结算三方"];
+    const expectedStatuses = ["批量改状态", "待注册", "待审核", "备案中", "备案驳回", "备案完成", "已验收", "已结算", "已结算三方", "已封禁"];
     if (JSON.stringify(statuses) !== JSON.stringify(expectedStatuses)) {
       throw new Error("unexpected statuses: " + JSON.stringify(statuses));
     }
@@ -95,7 +95,7 @@ const { chromium } = require("playwright");
       throw new Error("new program default status is not 待注册");
     }
     const statusOptions = await page.locator("#f_status option").allTextContents();
-    if (!statusOptions.includes("已验收") || !statusOptions.includes("已结算三方")) {
+    if (!statusOptions.includes("已验收") || !statusOptions.includes("已结算三方") || !statusOptions.includes("已封禁")) {
       throw new Error("new statuses missing: " + JSON.stringify(statusOptions));
     }
     const secret = page.locator("#f_secret");

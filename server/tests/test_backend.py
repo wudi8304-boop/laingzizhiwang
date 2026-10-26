@@ -907,17 +907,22 @@ class BackendTest(unittest.TestCase):
             "id": "done-src", "companyName": "甲公司", "miniProgramName": "程序已结算",
             "appid": "wx-done", "status": "已结算",
         })
+        service.create({
+            "id": "banned-src", "companyName": "甲公司", "miniProgramName": "程序已封禁",
+            "appid": "wx-banned", "status": "已封禁",
+        })
         summary = settle_records(self.db, [
             {"externalId": "11", "appid": "wx-settle", "miniProgramName": "程序结算", "settleStatus": "已结算"},
             {"appid": "wx-accept", "miniProgramName": "程序验收", "settleStatus": "已验收"},
             {"appid": "wx-open", "miniProgramName": "程序未开始", "settleStatus": "未开始"},
             {"appid": "wx-done", "miniProgramName": "程序已结算", "settleStatus": "已结算"},
+            {"appid": "wx-banned", "miniProgramName": "程序已封禁", "settleStatus": "已结算"},
             {"appid": "wx-missing", "miniProgramName": "不存在", "settleStatus": "已结算"},
         ], "test")
-        self.assertEqual(3, summary["settledSource"])
+        self.assertEqual(4, summary["settledSource"])
         self.assertEqual(1, summary["updated"])
         self.assertEqual(1, summary["already"])
-        self.assertEqual(1, summary["skipped"])
+        self.assertEqual(2, summary["skipped"])
         settled = service.get("settled-src")
         self.assertEqual("已结算", settled["status"])
         self.assertTrue(settled["settlementTime"])
@@ -926,6 +931,7 @@ class BackendTest(unittest.TestCase):
         self.assertEqual("", service.get("accepted-src")["settlementTime"])
         self.assertEqual("备案完成", service.get("open-src")["status"])
         self.assertEqual("已结算", service.get("done-src")["status"])
+        self.assertEqual("已封禁", service.get("banned-src")["status"])
 
     def test_vendor_match_only_fills_empty_fields_and_due_days(self):
         service = ProgramService(self.db)
@@ -1090,6 +1096,7 @@ class BackendTest(unittest.TestCase):
                 {"servicename": "驳回程序", "icpw": "ICP-4"},
                 {"servicename": "全新程序", "icpw": "ICP-5"},
                 {"servicename": "验收程序", "icpw": "ICP-6"},
+                {"servicename": "封禁程序", "icpw": "ICP-7"},
             ]
 
         def sender(_ding, content):
@@ -1104,19 +1111,21 @@ class BackendTest(unittest.TestCase):
         programs.create({"id": "third", "companyName": "甲", "miniProgramName": "三方程序", "status": "已结算三方"})
         programs.create({"id": "reject", "companyName": "甲", "miniProgramName": "驳回程序", "status": "备案驳回", "rejectReason": "主体信息不符"})
         programs.create({"id": "accepted", "companyName": "甲", "miniProgramName": "验收程序", "status": "已验收"})
+        programs.create({"id": "banned", "companyName": "甲", "miniProgramName": "封禁程序", "status": "已封禁"})
         self.assertEqual("success", service.run("manual", "quiet-2", datetime(2026, 2, 1, 11, 0))["status"])
         joined = "\n".join(calls["sent"])
         self.assertEqual(3, len(calls["sent"]))
         self.assertIn("驳回程序", joined)
         self.assertIn("全新程序", joined)
         self.assertIn("验收程序", joined)
-        for quiet_name in ("已完成程序", "已结算程序", "三方程序"):
+        for quiet_name in ("已完成程序", "已结算程序", "三方程序", "封禁程序"):
             self.assertNotIn(quiet_name, joined)
         self.assertEqual("备案完成", programs.get("done")["status"])
         self.assertEqual("已结算", programs.get("settled")["status"])
         self.assertEqual("已结算三方", programs.get("third")["status"])
         self.assertEqual("备案完成", programs.get("reject")["status"])
         self.assertEqual("已验收", programs.get("accepted")["status"])
+        self.assertEqual("已封禁", programs.get("banned")["status"])
         with self.db.connect() as conn:
             rows = conn.execute("SELECT status FROM notifications ORDER BY id").fetchall()
         self.assertEqual(["sent", "sent", "sent"], [row["status"] for row in rows])

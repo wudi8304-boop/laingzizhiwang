@@ -404,9 +404,9 @@ def save_approved(db, data):
             stamp = now()
             conn.execute(
                 """UPDATE programs SET
-                   completed_at=CASE WHEN status NOT IN ('备案完成','已结算') THEN ? ELSE completed_at END,
+                   completed_at=CASE WHEN status NOT IN ('备案完成','已结算','已封禁') THEN ? ELSE completed_at END,
                    status='备案完成',reject_reason='',updated_at=?
-                   WHERE lower(trim(mini_program_name))=? AND status<>'已结算'""",
+                   WHERE lower(trim(mini_program_name))=? AND status NOT IN ('已结算','已封禁')""",
                 (stamp, stamp, name.casefold()),
             )
 
