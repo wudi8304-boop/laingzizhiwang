@@ -941,7 +941,10 @@ function renderCompanyManagement(){
       <div><strong>${Number(company.programCount || 0)}</strong> 个小程序，完成 ${Number(company.completedCount || 0)} 个</div>
       <div class="progress-track"><div class="progress-value" style="width:${Math.max(0,Math.min(100,Number(company.progress||0)))}%"></div></div>
       <div class="muted">${statusText}</div>
-      <div style="margin-top:10px;"><button class="btn ghost sm" onclick="openCompanyDetails('${encodeURIComponent(company.name)}')">查看明细</button></div>
+      <div style="margin-top:10px;display:flex;gap:8px;">
+        <button class="btn ghost sm" onclick="openCompanyDetails('${encodeURIComponent(company.name)}')">查看明细</button>
+        ${isSuper() ? `<button class="btn danger sm" onclick="deleteCompany(${Number(company.id)})">删除</button>` : ''}
+      </div>
     </div>`;
   }).join('') : '<div class="muted">暂无可管理公司</div>';
 }
@@ -977,6 +980,23 @@ async function toggleSubadmin(id, active){
     await loadCompanyManagement();
     showToast(active ? '账号已启用' : '账号已停用', 'success');
   } catch(e) { showToast('操作失败：' + e.message, 'error'); }
+}
+
+async function deleteCompany(companyId){
+  const company = (_companiesCache || []).find(c => Number(c.id) === Number(companyId));
+  if (!company) { showToast('公司不存在或已删除', 'error'); return; }
+  const count = Number(company.programCount || 0);
+  const confirmed = confirm('确认删除「' + company.name + '」？\n将删除该公司下 ' + count + ' 个小程序及全部资料，并把已绑定邮箱标记为不能使用。此操作不可恢复。');
+  if (!confirmed) return;
+  try {
+    await apiDelete('/api/companies/' + companyId);
+    const filter = document.getElementById('filterCompany');
+    if (filter && filter.value === company.name) filter.value = '';
+    _emailsCache = await apiGet('/api/emails');
+    if (isSuper()) _monitorCache = await apiGet('/api/monitor');
+    await refreshCompanyViews();
+    showToast('公司已删除，相关邮箱已标记为不能使用', 'success');
+  } catch(e) { showToast('删除失败：' + e.message, 'error'); }
 }
 
 async function assignCompany(companyId, value){

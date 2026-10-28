@@ -17,7 +17,7 @@ SERVER_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, SERVER_DIR)
 
 from db import Database, now
-from config_server import Handler, ThreadingHTTPServer, fetch_program_avatar, load_document, monitor_config, save_monitor
+from config_server import Handler, ThreadingHTTPServer, delete_company, fetch_program_avatar, load_document, monitor_config, save_monitor
 from migrate_data import migrate
 from services.account import AccountService
 from services.auth import AuthService, verify_password
@@ -691,6 +691,7 @@ class BackendTest(unittest.TestCase):
             self.assertEqual(200, code)
             self.assertEqual(["a@x.com"], [row["email"] for row in emails["data"]])
             self.assertEqual(403, call(sub_client, "GET", "/api/account-automation")[0])
+            self.assertEqual(403, call(sub_client, "DELETE", "/api/companies/%d" % company_id)[0])
             code, refreshed = call(sub_client, "POST", "/api/programs/p1/refresh-email", {})
             self.assertEqual(200, code)
             self.assertEqual("spare@x.com", refreshed["newEmail"])
@@ -714,6 +715,63 @@ class BackendTest(unittest.TestCase):
                 os.environ.pop("SESSION_SECRET", None)
             else:
                 os.environ["SESSION_SECRET"] = old_secret
+
+    def test_delete_company_removes_its_records_and_disables_emails(self):
+        service = ProgramService(self.db)
+        service.create({
+            "id": "settled", "companyName": "甲公司", "miniProgramName": "已结算程序",
+            "email": "used@x.com", "status": "已结算",
+        })
+        service.create({
+            "id": "open", "companyName": "甲公司", "miniProgramName": "在办程序",
+            "email": "fresh@x.com",
+        })
+        service.create({
+            "id": "other", "companyName": "乙公司", "miniProgramName": "其他程序",
+            "email": "keep@x.com",
+        })
+        stamp = now()
+        with self.db.connect() as conn:
+            company_id = conn.execute("SELECT id FROM companies WHERE name='甲公司'").fetchone()["id"]
+            conn.execute("DELETE FROM emails WHERE address='fresh@x.com'")
+            conn.execute(
+                """INSERT INTO approved_programs(
+                   company_id,company_name,mini_program_name,normalized_name,created_at,updated_at
+                   ) VALUES(?,?,?,?,?,?)""",
+                (company_id, "甲公司", "在办程序", "在办程序", stamp, stamp),
+            )
+            conn.execute(
+                """INSERT INTO exceptions(
+                   program_id,company_name,mini_program_name,reason,status,created_at,updated_at
+                   ) VALUES('open','甲公司','在办程序','待处理','open',?,?)""",
+                (stamp, stamp),
+            )
+        result = delete_company(self.db, company_id, "admin")
+        self.assertEqual("甲公司", result["name"])
+        self.assertEqual(2, result["programCount"])
+        self.assertEqual(2, result["emailCount"])
+        self.assertIsNone(service.get("settled"))
+        self.assertIsNone(service.get("open"))
+        self.assertEqual("其他程序", service.get("other")["miniProgramName"])
+        with self.db.connect() as conn:
+            self.assertIsNone(conn.execute("SELECT id FROM companies WHERE name='甲公司'").fetchone())
+            self.assertIsNotNone(conn.execute("SELECT id FROM companies WHERE name='乙公司'").fetchone())
+            used = conn.execute("SELECT usable,invalid_by FROM emails WHERE address='used@x.com'").fetchone()
+            fresh = conn.execute("SELECT usable FROM emails WHERE address='fresh@x.com'").fetchone()
+            keep = conn.execute("SELECT usable FROM emails WHERE address='keep@x.com'").fetchone()
+            self.assertEqual(0, used["usable"])
+            self.assertEqual("admin", used["invalid_by"])
+            self.assertEqual(0, fresh["usable"])
+            self.assertEqual(1, keep["usable"])
+            self.assertEqual(0, conn.execute("SELECT COUNT(*) n FROM approved_programs").fetchone()["n"])
+            self.assertEqual(0, conn.execute("SELECT COUNT(*) n FROM exceptions").fetchone()["n"])
+        known = self.db.get_setting("vendor_synced_companies")
+        self.assertIn("甲公司", known)
+        self.assertIn("乙公司", known)
+        with self.assertRaisesRegex(ValueError, "不能使用"):
+            service.update("other", {"email": "used@x.com"})
+        with self.assertRaisesRegex(ValueError, "公司不存在"):
+            delete_company(self.db, company_id, "admin")
 
     def test_vendor_sync_updates_unique_match_and_reports_conflict(self):
         service = ProgramService(self.db)

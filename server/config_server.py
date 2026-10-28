@@ -342,6 +342,96 @@ def save_emails(db, data):
         db.audit("replace", "emails", "", {"count": len(data)}, "api", conn)
 
 
+def delete_company(db, company_id, actor="api"):
+    """删除公司及其名下资料，并把已绑定邮箱标记为不能使用。"""
+    with db.transaction() as conn:
+        company = conn.execute("SELECT * FROM companies WHERE id=?", (company_id,)).fetchone()
+        if not company:
+            raise ValueError("公司不存在")
+        programs = conn.execute(
+            """SELECT id,email FROM programs
+               WHERE company_id=? OR lower(trim(company_name))=lower(trim(?))""",
+            (company_id, company["name"]),
+        ).fetchall()
+        addresses, seen = [], set()
+        for program in programs:
+            address = str(program["email"] or "").strip()
+            key = address.casefold()
+            if address and key not in seen:
+                seen.add(key)
+                addresses.append(address)
+        stamp = now()
+        for address in addresses:
+            existing = conn.execute(
+                "SELECT id FROM emails WHERE lower(trim(address))=lower(trim(?))",
+                (address,),
+            ).fetchone()
+            if existing:
+                conn.execute(
+                    """UPDATE emails SET usable=0,invalid_at=?,invalid_by=?,updated_at=?
+                       WHERE id=?""",
+                    (stamp, actor, stamp, existing["id"]),
+                )
+            else:
+                sort_order = conn.execute(
+                    "SELECT COALESCE(MAX(sort_order),-1)+1 n FROM emails"
+                ).fetchone()["n"]
+                conn.execute(
+                    """INSERT INTO emails(
+                       address,payload,sort_order,usable,invalid_at,invalid_by,created_at,updated_at
+                       ) VALUES(?,?,?,?,?,?,?,?)""",
+                    (
+                        address, json.dumps({"email": address}, ensure_ascii=False),
+                        sort_order, 0, stamp, actor, stamp, stamp,
+                    ),
+                )
+        program_ids = [row["id"] for row in programs]
+        if program_ids:
+            conn.execute(
+                "DELETE FROM exceptions WHERE program_id IN (%s)" % ",".join("?" for _ in program_ids),
+                program_ids,
+            )
+        conn.execute(
+            "DELETE FROM exceptions WHERE lower(trim(company_name))=lower(trim(?))",
+            (company["name"],),
+        )
+        conn.execute(
+            """DELETE FROM approved_programs
+               WHERE company_id=? OR lower(trim(company_name))=lower(trim(?))""",
+            (company_id, company["name"]),
+        )
+        conn.execute(
+            """DELETE FROM programs
+               WHERE company_id=? OR lower(trim(company_name))=lower(trim(?))""",
+            (company_id, company["name"]),
+        )
+        conn.execute("DELETE FROM monitor_items WHERE company_id=?", (company_id,))
+        conn.execute("DELETE FROM companies WHERE id=?", (company_id,))
+        known = db.get_setting("vendor_synced_companies", None, conn)
+        if not isinstance(known, list):
+            known = [
+                str(value).strip()
+                for row in conn.execute("SELECT name,full_name FROM companies")
+                for value in (row["name"], row["full_name"])
+                if str(value or "").strip()
+            ]
+        names = {str(value).strip() for value in known if str(value or "").strip()}
+        names.add(str(company["name"] or "").strip())
+        full_name = str(company["full_name"] or "").strip()
+        if full_name:
+            names.add(full_name)
+        db.set_setting("vendor_synced_companies", sorted(names), conn)
+        db.audit(
+            "delete", "company", str(company_id),
+            {
+                "name": company["name"], "fullName": company["full_name"] or "",
+                "programIds": program_ids, "emails": addresses,
+            },
+            actor, conn,
+        )
+    return {"ok": True, "name": company["name"], "programCount": len(program_ids), "emailCount": len(addresses)}
+
+
 def company_summaries(db, principal=None):
     where, args = "", []
     if principal and principal.get("role") != "super":
@@ -650,6 +740,9 @@ class Handler(BaseHTTPRequestHandler):
             admin_id = data.get("adminId")
             auth.assign_company(company_id, int(admin_id) if admin_id not in (None, "") else None)
             return {"ok": True}
+        company_parts = path.strip("/").split("/")
+        if method == "DELETE" and len(company_parts) == 3 and company_parts[:2] == ["api", "companies"]:
+            return delete_company(self.db, int(company_parts[2]), self.current_user.get("username", "api"))
         if path == "/api/account-automation":
             account = AccountService(self.db)
             if method == "GET":
