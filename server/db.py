@@ -31,6 +31,11 @@ CREATE TABLE IF NOT EXISTS companies (
  legal_person_name TEXT NOT NULL DEFAULT '', legal_person_phone TEXT NOT NULL DEFAULT '',
  created_at TEXT NOT NULL, updated_at TEXT NOT NULL
 );
+CREATE TABLE IF NOT EXISTS deleted_companies (
+ id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL DEFAULT '', full_name TEXT NOT NULL DEFAULT '',
+ deleted_at TEXT NOT NULL, deleted_by TEXT NOT NULL DEFAULT ''
+);
+CREATE INDEX IF NOT EXISTS idx_deleted_companies_name ON deleted_companies(name);
 CREATE TABLE IF NOT EXISTS programs (
  id TEXT PRIMARY KEY, company_id INTEGER REFERENCES companies(id) ON DELETE SET NULL,
  company_name TEXT NOT NULL DEFAULT '', mini_program_name TEXT NOT NULL DEFAULT '',
@@ -248,6 +253,7 @@ class Database:
                      SELECT RAISE(ABORT, '已结算的小程序不允许修改');
                    END"""
             )
+            _remember_previously_deleted_companies(conn)
 
     @contextmanager
     def transaction(self, immediate=True):
@@ -296,6 +302,41 @@ class Database:
         finally:
             if own:
                 conn.close()
+
+
+
+def _remember_previously_deleted_companies(conn):
+    """把已经删除过的公司从审计记录补进删除表，避免升级前删掉的公司再次被同步导入。"""
+    audits = conn.execute(
+        """SELECT detail,actor,created_at FROM audit_logs
+           WHERE action='delete' AND entity_type='company'"""
+    ).fetchall()
+    if not audits:
+        return
+    known = set()
+    for row in conn.execute("SELECT name, full_name FROM deleted_companies"):
+        for value in (row["name"], row["full_name"]):
+            text = str(value or "").strip()
+            if text:
+                known.add(text.casefold())
+    for row in audits:
+        try:
+            detail = json.loads(row["detail"] or "{}")
+        except (TypeError, ValueError):
+            continue
+        if not isinstance(detail, dict):
+            continue
+        name = str(detail.get("name") or "").strip()
+        full_name = str(detail.get("fullName") or "").strip()
+        keys = [value.casefold() for value in (name, full_name) if value]
+        if not name or any(key in known for key in keys):
+            continue
+        conn.execute(
+            """INSERT INTO deleted_companies(name,full_name,deleted_at,deleted_by)
+               VALUES(?,?,?,?)""",
+            (name, full_name, row["created_at"] or now(), row["actor"] or "backfill"),
+        )
+        known.update(keys)
 
 
 def row_dict(row):

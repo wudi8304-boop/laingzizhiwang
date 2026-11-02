@@ -117,6 +117,19 @@ def monitor_config(db):
     }
 
 
+def _matches_deleted_company(conn, name):
+    text = str(name or "").strip()
+    if not text:
+        return False
+    return conn.execute(
+        """SELECT 1 FROM deleted_companies
+           WHERE lower(trim(name))=lower(trim(?))
+              OR (trim(full_name)<>'' AND lower(trim(full_name))=lower(trim(?)))
+           LIMIT 1""",
+        (text, text),
+    ).fetchone() is not None
+
+
 def _companies_for_legal_name(conn, legal_name):
     text = str(legal_name or "").strip()
     if not text:
@@ -256,6 +269,8 @@ def save_monitor(db, data):
                     )
                 company_id = current["id"]
             else:
+                if _matches_deleted_company(conn, name) or _matches_deleted_company(conn, full_name):
+                    continue
                 cur = conn.execute(
                     """INSERT INTO companies(name,full_name,enabled,monitor_listed,last_check,last_count,has_new,created_at,updated_at)
                        VALUES(?,?,?,?,?,?,?,?,?)""",
@@ -406,6 +421,15 @@ def delete_company(db, company_id, actor="api"):
             (company_id, company["name"]),
         )
         conn.execute("DELETE FROM monitor_items WHERE company_id=?", (company_id,))
+        conn.execute(
+            """INSERT INTO deleted_companies(name,full_name,deleted_at,deleted_by)
+               VALUES(?,?,?,?)""",
+            (
+                str(company["name"] or "").strip(),
+                str(company["full_name"] or "").strip(),
+                stamp, actor,
+            ),
+        )
         conn.execute("DELETE FROM companies WHERE id=?", (company_id,))
         known = db.get_setting("vendor_synced_companies", None, conn)
         if not isinstance(known, list):

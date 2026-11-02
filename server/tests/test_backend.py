@@ -773,6 +773,101 @@ class BackendTest(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "公司不存在"):
             delete_company(self.db, company_id, "admin")
 
+    def test_deleted_company_is_not_imported_or_matched_again(self):
+        service = ProgramService(self.db)
+        service.create({
+            "id": "gone", "companyName": "智绘未来", "miniProgramName": "旧程序",
+            "email": "old@x.com",
+        })
+        stamp = now()
+        with self.db.connect() as conn:
+            conn.execute(
+                "UPDATE companies SET full_name=? WHERE name=?",
+                ("邢台市智绘未来信息科技有限公司", "智绘未来"),
+            )
+            company_id = conn.execute("SELECT id FROM companies WHERE name='智绘未来'").fetchone()["id"]
+            conn.execute(
+                """INSERT INTO emails(address,payload,sort_order,usable,created_at,updated_at)
+                   VALUES('spare@x.com','{}',0,1,?,?)""",
+                (stamp, stamp),
+            )
+        delete_company(self.db, company_id, "admin")
+        summary = upsert_records(self.db, [
+            {
+                "companyName": "邢台市智绘未来信息科技有限公司",
+                "miniProgramName": "新程序", "appid": "wx-new",
+                "originalId": "gh_new", "secret": "sec", "admin": "管理员",
+            },
+            {
+                "companyName": "乙公司", "miniProgramName": "乙程序",
+                "appid": "wx-b", "email": "keep@x.com",
+            },
+        ], "test", new_companies_only=False, fill_existing=True)
+        self.assertEqual(1, summary["created"])
+        self.assertEqual(1, summary["ignoredDeleted"])
+        self.assertEqual(0, summary["emailsAssigned"])
+        self.assertIsNone(service.get("gone"))
+        with self.db.connect() as conn:
+            deleted = conn.execute(
+                "SELECT name,full_name FROM deleted_companies WHERE name='智绘未来'"
+            ).fetchone()
+            self.assertEqual("邢台市智绘未来信息科技有限公司", deleted["full_name"])
+            self.assertIsNone(conn.execute(
+                """SELECT id FROM companies
+                   WHERE name IN ('智绘未来','邢台市智绘未来信息科技有限公司')
+                      OR full_name='邢台市智绘未来信息科技有限公司'"""
+            ).fetchone())
+            self.assertIsNotNone(conn.execute(
+                "SELECT id FROM programs WHERE mini_program_name='乙程序'"
+            ).fetchone())
+            self.assertIsNone(conn.execute(
+                "SELECT id FROM programs WHERE mini_program_name='新程序'"
+            ).fetchone())
+            self.assertIsNone(conn.execute(
+                "SELECT id FROM programs WHERE lower(trim(email))='spare@x.com'"
+            ).fetchone())
+        again = upsert_records(self.db, [{
+            "companyName": "智绘未来", "miniProgramName": "再来一次", "appid": "wx-again",
+        }], "test")
+        self.assertEqual(0, again["created"])
+        self.assertEqual(1, again["ignoredDeleted"])
+        matched = match_records(self.db, [{
+            "companyName": "邢台市智绘未来信息科技有限公司",
+            "miniProgramName": "乙程序", "appid": "wx-other", "admin": "不该写入",
+        }])
+        self.assertEqual(1, matched["skipped"])
+        self.assertEqual(0, matched["updated"])
+        with self.db.connect() as conn:
+            program_id = conn.execute(
+                "SELECT id FROM programs WHERE mini_program_name='乙程序'"
+            ).fetchone()["id"]
+        self.assertEqual("", service.get(program_id)["admin"])
+        saved = save_monitor(self.db, {"companies": [
+            {"name": "邢台市智绘未来信息科技有限公司", "fullName": "邢台市智绘未来信息科技有限公司", "enabled": True},
+            {"name": "乙公司", "enabled": True},
+        ]})
+        self.assertEqual(["乙公司"], [item["name"] for item in saved["companies"]])
+
+    def test_previous_delete_audit_is_remembered_on_startup(self):
+        stamp = now()
+        with self.db.connect() as conn:
+            conn.execute(
+                """INSERT INTO audit_logs(action,entity_type,entity_id,detail,actor,created_at)
+                   VALUES('delete','company','9',?,?,?)""",
+                (json.dumps({"name": "旧公司", "fullName": "旧公司全称"}, ensure_ascii=False), "admin", stamp),
+            )
+        self.db.initialize()
+        self.db.initialize()
+        with self.db.connect() as conn:
+            rows = conn.execute("SELECT name,full_name FROM deleted_companies WHERE name='旧公司'").fetchall()
+        self.assertEqual(1, len(rows))
+        self.assertEqual("旧公司全称", rows[0]["full_name"])
+        summary = upsert_records(self.db, [{
+            "companyName": "旧公司全称", "miniProgramName": "新程序", "appid": "wx-old",
+        }], "test", new_companies_only=False, fill_existing=True)
+        self.assertEqual(0, summary["created"])
+        self.assertEqual(1, summary["ignoredDeleted"])
+
     def test_vendor_sync_updates_unique_match_and_reports_conflict(self):
         service = ProgramService(self.db)
         service.create({"id": "p1", "companyName": "测试公司", "miniProgramName": "程序A", "appid": "wx1"})

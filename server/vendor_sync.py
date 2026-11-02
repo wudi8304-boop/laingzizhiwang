@@ -72,6 +72,23 @@ def random_unused_email(db):
     return str(row["address"]).strip() if row else ""
 
 
+
+def deleted_company_labels(conn):
+    labels, seen = [], set()
+    for row in conn.execute("SELECT name, full_name FROM deleted_companies"):
+        for value in (row["name"], row["full_name"]):
+            text = str(value or "").strip()
+            key = text.casefold()
+            if text and key not in seen:
+                seen.add(key)
+                labels.append(text)
+    return labels
+
+
+def deleted_company_aliases(conn):
+    return {label.casefold() for label in deleted_company_labels(conn)}
+
+
 def upsert_records(db, records, source_ref="", new_companies_only=True, fill_existing=False):
     service = ProgramService(db)
     with db.connect() as conn:
@@ -83,20 +100,28 @@ def upsert_records(db, records, source_ref="", new_companies_only=True, fill_exi
             str(row["full_name"]).strip().casefold()
             for row in conn.execute("SELECT full_name FROM companies WHERE trim(full_name)<>''")
         )
+        deleted_aliases = deleted_company_aliases(conn)
     vendor_companies = {
         str(row.get("companyName") or "").strip()
         for row in records if isinstance(row, dict) and str(row.get("companyName") or "").strip()
     }
     new_companies = sorted(
-        name for name in vendor_companies if name.casefold() not in known_company_names
+        name for name in vendor_companies
+        if name.casefold() not in known_company_names and name.casefold() not in deleted_aliases
     )
-    selected = [
-        row for row in records
-        if not new_companies_only or str(row.get("companyName") or "").strip() in new_companies
-    ]
+    selected, ignored_deleted = [], 0
+    for row in records:
+        company_name = str(row.get("companyName") or "").strip() if isinstance(row, dict) else ""
+        if company_name and company_name.casefold() in deleted_aliases:
+            ignored_deleted += 1
+            continue
+        if new_companies_only and company_name not in new_companies:
+            continue
+        selected.append(row)
     summary = {
         "total": len(records), "newCompanies": new_companies, "selected": len(selected),
         "created": 0, "updated": 0, "conflicts": 0, "skipped": 0,
+        "ignoredDeleted": ignored_deleted,
         "emailsAssigned": 0, "emailsUnavailable": 0, "fieldsUpdated": 0,
     }
     with db.connect() as conn:
@@ -225,8 +250,14 @@ def match_records(db, records, source_ref=""):
             (source_ref, now()),
         )
         job_id = cur.lastrowid
+    with db.connect() as conn:
+        deleted_aliases = deleted_company_aliases(conn)
     try:
         for raw in records:
+            company_name = str(raw.get("companyName") or "").strip() if isinstance(raw, dict) else ""
+            if company_name and company_name.casefold() in deleted_aliases:
+                summary["skipped"] += 1
+                continue
             item = {key: raw.get(key) for key in VENDOR_FIELDS if raw.get(key) not in (None, "")}
             external_id = str(item.get("externalId") or "").strip()
             appid = str(item.get("appid") or "").strip()
@@ -308,12 +339,19 @@ def settle_records(db, records, source_ref=""):
             (source_ref, now()),
         )
         job_id = cur.lastrowid
+    with db.connect() as conn:
+        deleted_aliases = deleted_company_aliases(conn)
     try:
         for raw in records:
             if not isinstance(raw, dict):
                 summary["skipped"] += 1
                 continue
+            company_name = str(raw.get("companyName") or "").strip()
             settle_status = str(raw.get("settleStatus") or "").strip()
+            if company_name and company_name.casefold() in deleted_aliases:
+                if settle_status in SETTLED_VENDOR_STATUSES:
+                    summary["skipped"] += 1
+                continue
             if settle_status not in SETTLED_VENDOR_STATUSES:
                 continue
             summary["settledSource"] += 1
@@ -479,8 +517,14 @@ def main():
                     if str(value or "").strip()
                 })
             db.set_setting("vendor_synced_companies", names)
+        with db.connect() as conn:
+            names = sorted({
+                str(value).strip()
+                for value in list(names) + deleted_company_labels(conn)
+                if str(value or "").strip()
+            })
         with open(args.export_known_companies, "w", encoding="utf-8") as fh:
-            json.dump(sorted(names), fh, ensure_ascii=False)
+            json.dump(names, fh, ensure_ascii=False)
         return 0
     if args.export_match_candidates:
         export_match_candidates(db, args.export_match_candidates)
