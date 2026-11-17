@@ -1283,6 +1283,59 @@ class BackendTest(unittest.TestCase):
             rows = conn.execute("SELECT status FROM notifications ORDER BY id").fetchall()
         self.assertEqual(["sent", "sent", "sent"], [row["status"] for row in rows])
 
+    def test_monitor_notifies_only_new_filing_numbers(self):
+        stamp = now()
+        with self.db.connect() as conn:
+            conn.execute(
+                "INSERT INTO companies(name,full_name,enabled,last_check,created_at,updated_at) VALUES('甲','甲公司',1,?,?,?)",
+                (stamp, stamp, stamp),
+            )
+            company_id = conn.execute("SELECT id FROM companies WHERE name='甲'").fetchone()["id"]
+            conn.execute(
+                "INSERT INTO monitor_runs(trigger_type,trigger_key,status,started_at,finished_at) VALUES('manual','old','success',?,?)",
+                (stamp, stamp),
+            )
+            run_id = conn.execute("SELECT id FROM monitor_runs WHERE trigger_key='old'").fetchone()["id"]
+            conn.execute(
+                """INSERT INTO monitor_items(run_id,company_id,item_key,name,icp,is_new,raw_json,created_at)
+                   VALUES(?,?,?,?,?,0,'{}',?)""",
+                (run_id, company_id, 'name:旧程序', '旧程序', 'ICP-OLD', stamp),
+            )
+        self.db.set_setting('monitor_apihz', {'id': 'from-db', 'key': 'from-db'})
+        calls = {'run': 0, 'sent': []}
+
+        def query(_credentials, _name):
+            calls['run'] += 1
+            if calls['run'] == 1:
+                return [
+                    {'servicename': None, 'icpw': 'ICP-OLD'},
+                    {'servicename': None, 'icpw': 'ICP-LATER'},
+                    {'servicename': '新程序', 'icpw': 'ICP-NEW'},
+                ]
+            return [
+                {'servicename': '旧程序', 'icpw': 'ICP-OLD'},
+                {'servicename': '稍后程序', 'icpw': 'ICP-LATER'},
+                {'servicename': '新程序', 'icpw': 'ICP-NEW'},
+            ]
+
+        def sender(_ding, content):
+            calls['sent'].append(content)
+            return True, 'ok'
+
+        service = MonitorService(self.db, query=query, sender=sender, sleeper=lambda _: None)
+        self.assertEqual('success', service.run('manual', 'icp-1', datetime(2026, 3, 1, 10, 0))['status'])
+        self.assertEqual(1, len(calls['sent']))
+        self.assertIn('新程序', calls['sent'][0])
+        self.assertIn('ICP-NEW', calls['sent'][0])
+        self.assertNotIn('ICP-OLD', calls['sent'][0])
+        self.assertNotIn('ICP-LATER', calls['sent'][0])
+        self.assertEqual('success', service.run('manual', 'icp-2', datetime(2026, 3, 1, 11, 0))['status'])
+        self.assertEqual(2, len(calls['sent']))
+        self.assertIn('稍后程序', calls['sent'][1])
+        self.assertIn('ICP-LATER', calls['sent'][1])
+        self.assertNotIn('新程序', calls['sent'][1])
+        self.assertNotIn('旧程序', calls['sent'][1])
+
     def test_retry_skips_dingtalk_for_already_quiet_programs(self):
         programs = ProgramService(self.db)
         programs.create({"id": "done", "companyName": "甲", "miniProgramName": "已完成程序", "status": "备案完成"})

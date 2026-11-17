@@ -22,7 +22,27 @@ def normalize_item(value):
 
 
 def item_key(item):
-    return ("name:" + item["name"]) if item.get("name") else (("icp:" + item["icp"]) if item.get("icp") else "")
+    icp = str(item.get("icp") or "").strip()
+    if icp:
+        return "icp:" + icp
+    name = str(item.get("name") or "").strip()
+    return ("name:" + name) if name else ""
+
+
+def collapse_items(items):
+    merged = {}
+    order = []
+    for item in items:
+        key = item_key(item)
+        if not key:
+            continue
+        current = merged.get(key)
+        if current is None:
+            order.append(key)
+            merged[key] = item
+        elif item.get("name") and not current.get("name"):
+            merged[key] = item
+    return [merged[key] for key in order]
 
 
 DINGTALK_QUIET_STATUSES = ("已结算", "已结算三方", "备案完成", "已封禁")
@@ -153,8 +173,7 @@ class MonitorService:
                 conn.execute("DELETE FROM settings WHERE key='monitor_lock'")
 
     def _record_company(self, run_id, company, raw_items, ding, at):
-        items = [normalize_item(x) for x in raw_items]
-        items = [x for x in items if item_key(x)]
+        items = collapse_items(normalize_item(x) for x in raw_items)
         stamp = at.strftime("%Y-%m-%d %H:%M:%S")
         with self.db.transaction() as conn:
             had_baseline = bool(company["last_check"]) or conn.execute(
@@ -162,17 +181,32 @@ class MonitorService:
                    WHERE mi.company_id=? AND mr.id<>? AND mr.status IN ('success','partial') LIMIT 1""",
                 (company["id"], run_id),
             ).fetchone() is not None
-            previous = {
-                row["item_key"] for row in conn.execute(
-                    """SELECT mi.item_key FROM monitor_items mi JOIN monitor_runs mr ON mr.id=mi.run_id
-                       WHERE mi.company_id=? AND mr.id<>? AND mr.status IN ('success','partial')
-                       ORDER BY mr.id DESC""", (company["id"], run_id)
-                ).fetchall()
-            }
+            previous_rows = conn.execute(
+                """SELECT mi.item_key, mi.icp FROM monitor_items mi JOIN monitor_runs mr ON mr.id=mi.run_id
+                   WHERE mi.company_id=? AND mr.id<>? AND mr.status IN ('success','partial')""",
+                (company["id"], run_id),
+            ).fetchall()
+            previous_keys = set()
+            previous_icps = set()
+            for row in previous_rows:
+                if row["item_key"]:
+                    previous_keys.add(row["item_key"])
+                icp = str(row["icp"] or "").strip()
+                if not icp and str(row["item_key"] or "").startswith("icp:"):
+                    icp = row["item_key"][4:].strip()
+                if icp:
+                    previous_icps.add(icp.casefold())
             new_items = []
             for item in items:
                 key = item_key(item)
-                is_new = int(had_baseline and key not in previous)
+                icp_key = item["icp"].casefold()
+                known = key in previous_keys or (icp_key and icp_key in previous_icps)
+                if not item["name"] and not known:
+                    continue
+                is_new = int(had_baseline and not known)
+                previous_keys.add(key)
+                if icp_key:
+                    previous_icps.add(icp_key)
                 conn.execute(
                     """INSERT OR IGNORE INTO monitor_items(run_id,company_id,item_key,name,icp,is_new,raw_json,created_at)
                        VALUES(?,?,?,?,?,?,?,?)""",
@@ -186,7 +220,7 @@ class MonitorService:
                     quiet = False
                 if is_new:
                     new_items.append(item)
-                    if not quiet:
+                    if item["icp"] and item["name"] and not quiet:
                         event_key = "filing:%s:%s" % (company["id"], key)
                         payload = {
                             "companyName": company["name"], "companyFullName": company["full_name"],
@@ -370,10 +404,18 @@ class MonitorService:
             batch = data.get("datas") if isinstance(data.get("datas"), list) else []
             fresh = set()
             for value in batch:
-                key = item_key(normalize_item(value))
-                if key and key not in seen and key not in fresh:
+                item = normalize_item(value)
+                key = item_key(item)
+                if not key:
+                    continue
+                if key not in seen and key not in fresh:
                     result.append(value)
                     fresh.add(key)
+                elif item.get("name"):
+                    for index, current in enumerate(result):
+                        if item_key(normalize_item(current)) == key and not normalize_item(current).get("name"):
+                            result[index] = value
+                            break
             seen.update(fresh)
             total = int(data.get("total") or len(result))
             if not batch or len(result) >= total or not fresh:
